@@ -1,42 +1,357 @@
-#root {
+/* ─── SAIL Dashboard – Responsive Styles ─── */
+
+/* ── Header ── */
+.dash-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.01);
+  flex-wrap: wrap;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+
+.dash-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dash-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── SAIL Logo ── */
+.sail-logo-wrap {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.sail-logo-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #1c6ef5, #0a4fd4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 10px rgba(28, 110, 245, 0.4);
+  flex-shrink: 0;
+}
+
+.sail-logo-text {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #fff;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  line-height: 1;
+}
+
+.dash-title-block h1 {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: #f0f2f5;
+}
+
+.dash-title-block .dash-sub {
+  font-size: 10px;
+  color: #7a8599;
+  margin-top: 1px;
+}
+
+/* ── Toggle Buttons ── */
+.toggle-group {
+  display: flex;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.toggle-btn {
+  padding: 5px 11px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+  line-height: 1.4;
+  min-height: 30px;
+  white-space: nowrap;
+}
+
+/* ── Status bar ── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-label {
+  font-size: 11px;
+  color: #7a8599;
+  white-space: nowrap;
+}
+
+.refresh-btn {
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #9aa3b4;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.refresh-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f0f2f5;
+}
+
+/* ── Main ── */
+.dash-main {
+  padding: 16px;
   max-width: 1280px;
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* ── Summary Cards ── */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+.stat-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.stat-card-label {
+  font-size: 10px;
+  color: #7a8599;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 6px;
+}
+
+.stat-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1.1;
+}
+
+.stat-card-sub {
+  font-size: 11px;
+  color: #7a8599;
+  margin-top: 3px;
+}
+
+/* ── Section Panels ── */
+.dash-panel {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0f2f5;
+}
+
+/* ── Legend ── */
+.legend-group {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #9aa3b4;
+}
+
+/* ── Detail Grid ── */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+/* ── Alert items ── */
+.alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* ── Trend summary box ── */
+.trend-summary {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #9aa3b4;
+}
+
+/* ── Footer ── */
+.dash-footer {
+  padding: 14px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  color: #555d6e;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 32px;
+}
+
+/* ═══════════════════════════════
+   TABLET  ≥ 480px
+═══════════════════════════════ */
+@media (min-width: 480px) {
+  .dash-header {
+    padding: 14px 20px;
   }
-  to {
-    transform: rotate(360deg);
+
+  .dash-main {
+    padding: 18px 20px;
+  }
+
+  .sail-logo-badge {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
+  .dash-title-block h1 {
+    font-size: 16px;
+  }
+
+  .dash-title-block .dash-sub {
+    font-size: 11px;
+  }
+
+  .detail-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .stat-card-value {
+    font-size: 24px;
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+/* ═══════════════════════════════
+   DESKTOP  ≥ 768px
+═══════════════════════════════ */
+@media (min-width: 768px) {
+  .dash-header {
+    padding: 18px 28px;
   }
-}
 
-.card {
-  padding: 2em;
-}
+  .dash-main {
+    padding: 20px 28px;
+  }
 
-.read-the-docs {
-  color: #888;
+  .sail-logo-badge {
+    width: 36px;
+    height: 36px;
+  }
+
+  .dash-title-block h1 {
+    font-size: 18px;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    padding: 18px 20px;
+  }
+
+  .stat-card-label {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+  }
+
+  .stat-card-value {
+    font-size: 26px;
+  }
+
+  .detail-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+
+  .dash-panel {
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+
+  .panel-title {
+    font-size: 15px;
+  }
+
+  .dash-footer {
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 16px 28px;
+  }
+
+  .legend-group {
+    flex-wrap: nowrap;
+  }
 }
