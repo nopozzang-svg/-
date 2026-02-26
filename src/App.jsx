@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, Legend, Cell, ReferenceLine
@@ -7,6 +7,71 @@ import "./App.css";
 
 const API_KEY = "F250430333";
 const API_BASE = "https://www.opinet.co.kr/api";
+
+/* ══════════════════════════════════════
+   전일 가격 localStorage 관리
+   - 키: "sail_price_history"
+   - 구조: { "2026-02-25": { 지점명: { sg, sd, comp: { 경쟁사명: { g, d } } } } }
+   - 최대 7일치 보관, 자동 삭제
+══════════════════════════════════════ */
+const STORE_KEY = "sail_price_history";
+
+const getTodayStr = () => new Date().toISOString().split("T")[0];
+
+/** 오늘 날짜 기준으로 가격 데이터를 localStorage에 저장 */
+const savePricesToLocal = (date, groups) => {
+  try {
+    const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    const snapshot = {};
+    groups.forEach(g => {
+      snapshot[g.name] = {
+        sg: g.sail.gasoline,   // sail gasoline
+        sd: g.sail.diesel,     // sail diesel
+        comp: Object.fromEntries(
+          g.competitors.map(c => [c.name, { g: c.gasoline, d: c.diesel }])
+        ),
+      };
+    });
+    history[date] = snapshot;
+    // 7일치만 유지
+    const keys = Object.keys(history).sort();
+    while (keys.length > 7) delete history[keys.shift()];
+    localStorage.setItem(STORE_KEY, JSON.stringify(history));
+  } catch (_) { /* localStorage 사용 불가 환경 대응 */ }
+};
+
+/** 오늘 이전 날짜 중 가장 최근 데이터를 가져옴 */
+const loadPrevDayData = () => {
+  try {
+    const today = getTodayStr();
+    const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    const prevDates = Object.keys(history).filter(d => d < today).sort().reverse();
+    if (!prevDates.length) return null;
+    return { date: prevDates[0], snapshot: history[prevDates[0]] };
+  } catch (_) { return null; }
+};
+
+/** groups 배열에 이전 날짜 가격을 prevGasoline/prevDiesel로 주입 */
+const applyPrevDiffs = (groups, prevData) => {
+  if (!prevData) return groups;
+  const { snapshot } = prevData;
+  return groups.map(g => {
+    const ps = snapshot[g.name];
+    return {
+      ...g,
+      sail: {
+        ...g.sail,
+        prevGasoline: ps?.sg ?? null,
+        prevDiesel:   ps?.sd ?? null,
+      },
+      competitors: g.competitors.map(c => ({
+        ...c,
+        prevGasoline: ps?.comp?.[c.name]?.g ?? null,
+        prevDiesel:   ps?.comp?.[c.name]?.d ?? null,
+      })),
+    };
+  });
+};
 
 const STATION_GROUPS = [
   {
@@ -76,7 +141,7 @@ const SAMPLE_DATA = {
   groups: [
     {
       name: "광교신도시",
-      sail:        { gasoline: 1665, diesel: 1595, prevGasoline: 1655, prevDiesel: 1575 },
+      sail:        { gasoline: 1665, diesel: 1595, prevGasoline: null, prevDiesel: null },
       competitors: [
         { name: "기흥서일",   gasoline: 1665, diesel: 1595, prevGasoline: null, prevDiesel: null },
         { name: "언남에너지", gasoline: 1625, diesel: 1545, prevGasoline: null, prevDiesel: null },
@@ -84,7 +149,7 @@ const SAMPLE_DATA = {
     },
     {
       name: "안양",
-      sail:        { gasoline: 1689, diesel: 1599, prevGasoline: 1679, prevDiesel: 1579 },
+      sail:        { gasoline: 1689, diesel: 1599, prevGasoline: null, prevDiesel: null },
       competitors: [
         { name: "청기와",   gasoline: 1668, diesel: 1568, prevGasoline: null, prevDiesel: null },
         { name: "안양알찬", gasoline: 1755, diesel: 1695, prevGasoline: null, prevDiesel: null },
@@ -92,7 +157,7 @@ const SAMPLE_DATA = {
     },
     {
       name: "박달",
-      sail:        { gasoline: 1659, diesel: 1579, prevGasoline: 1649, prevDiesel: 1559 },
+      sail:        { gasoline: 1659, diesel: 1579, prevGasoline: null, prevDiesel: null },
       competitors: [
         { name: "세광 푸른",    gasoline: 1658, diesel: 1538, prevGasoline: null, prevDiesel: null },
         { name: "안양원예농협", gasoline: 1658, diesel: 1538, prevGasoline: null, prevDiesel: null },
@@ -112,16 +177,16 @@ const SAMPLE_DATA = {
       name: "남부순환로",
       sail:        { gasoline: 1645, diesel: 1545, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "울선",         gasoline: 1615, diesel: 1515, prevGasoline: null, prevDiesel: 1505 },
-        { name: "올리셀프",     gasoline: 1615, diesel: 1515, prevGasoline: null, prevDiesel: 1505 },
-        { name: "무지개대공원", gasoline: 1625, diesel: 1535, prevGasoline: 1615, prevDiesel: null },
+        { name: "울선",         gasoline: 1615, diesel: 1515, prevGasoline: null, prevDiesel: null },
+        { name: "올리셀프",     gasoline: 1615, diesel: 1515, prevGasoline: null, prevDiesel: null },
+        { name: "무지개대공원", gasoline: 1625, diesel: 1535, prevGasoline: null, prevDiesel: null },
       ],
     },
     {
       name: "온산",
       sail:        { gasoline: 1678, diesel: 1578, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "당월",    gasoline: 1695, diesel: 1535, prevGasoline: null, prevDiesel: null },
+        { name: "당월",     gasoline: 1695, diesel: 1535, prevGasoline: null, prevDiesel: null },
         { name: "온산공단", gasoline: 1685, diesel: 1585, prevGasoline: null, prevDiesel: null },
       ],
     },
@@ -175,11 +240,17 @@ const TablePriceDiff = ({ diff, mode }) => {
 };
 
 /* ─── 게시가 현황 테이블 ─── */
-const PostedPriceTable = ({ data }) => (
+const PostedPriceTable = ({ data, prevDate }) => (
   <div className="ppt-wrap">
     <div className="ppt-head">
       <span className="ppt-title">게시가 현황</span>
-      <span className="ppt-date">{data.date}</span>
+      <div style={{ textAlign: "right" }}>
+        <div className="ppt-date">{data.date}</div>
+        {prevDate
+          ? <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>전일기준: {prevDate}</div>
+          : <div style={{ fontSize: 10, color: "#d1d5db", marginTop: 2 }}>전일 데이터 없음 (내일부터 표시)</div>
+        }
+      </div>
     </div>
     <div className="ppt-scroll">
       <table className="ppt-table">
@@ -409,6 +480,24 @@ export default function SailDashboard() {
   const [loading, setLoading] = useState(false);
   const [apiStatus, setApiStatus] = useState("sample");
   const [activeView, setActiveView] = useState("overview");
+  const [prevDateLabel, setPrevDateLabel] = useState(null);
+
+  // 앱 최초 로드 시:
+  // 1) localStorage에서 이전 날짜 가격을 불러와 전일대비 계산
+  // 2) 오늘 날짜로 현재 샘플 가격 저장 (다음날 전일대비용)
+  useEffect(() => {
+    const today = getTodayStr();
+    const prevData = loadPrevDayData();
+    if (prevData) {
+      setPrevDateLabel(prevData.date);
+      setData(prev => ({
+        ...prev,
+        groups: applyPrevDiffs(prev.groups, prevData),
+      }));
+    }
+    // 오늘 샘플 데이터 저장 (API 갱신 전까지의 기준값)
+    savePricesToLocal(today, SAMPLE_DATA.groups);
+  }, []);
 
   const fuelLabel = fuelType === "gasoline" ? "휘발유" : "경유";
 
@@ -451,7 +540,22 @@ export default function SailDashboard() {
         sail: { name: results[g.sail.id]?.name || g.sail.name, gasoline: results[g.sail.id]?.gasoline || 0, diesel: results[g.sail.id]?.diesel || 0, prevGasoline: null, prevDiesel: null },
         competitors: g.competitors.map(c => ({ name: results[c.id]?.name || c.name, gasoline: results[c.id]?.gasoline || 0, diesel: results[c.id]?.diesel || 0, prevGasoline: null, prevDiesel: null })),
       }));
-      setData(prev => ({ ...prev, date: new Date().toISOString().split("T")[0], nationalAvg, groups: groups.some(g => g.sail.gasoline > 0) ? groups : prev.groups }));
+      const today = getTodayStr();
+      const validGroups = groups.some(g => g.sail.gasoline > 0) ? groups : null;
+
+      if (validGroups) {
+        // 오늘 실시간 가격 저장 (다음날 전일대비용)
+        savePricesToLocal(today, validGroups);
+
+        // 전일 데이터 불러와 전일대비 계산
+        const prevData = loadPrevDayData();
+        if (prevData) setPrevDateLabel(prevData.date);
+        const groupsWithDiff = applyPrevDiffs(validGroups, prevData);
+
+        setData(prev => ({ ...prev, date: today, nationalAvg, groups: groupsWithDiff }));
+      } else {
+        setData(prev => ({ ...prev, date: today, nationalAvg }));
+      }
       setApiStatus("live");
     } catch (e) {
       console.error("API fetch failed:", e);
@@ -552,7 +656,7 @@ export default function SailDashboard() {
         {/* ── OVERVIEW ── */}
         {activeView === "overview" && (
           <>
-            <PostedPriceTable data={data} />
+            <PostedPriceTable data={data} prevDate={prevDateLabel} />
 
             {/* 지점별 가격 비교 차트 */}
             <div className="dash-panel">
