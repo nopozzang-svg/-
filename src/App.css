@@ -1,5 +1,177 @@
 /* ─── SAIL Dashboard – Responsive Styles ─── */
 
+/* ══════════════════════════════════
+   게시가 현황 테이블
+══════════════════════════════════ */
+.ppt-wrap {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+
+.ppt-head {
+  padding: 14px 16px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.015);
+}
+
+.ppt-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0f2f5;
+}
+
+.ppt-date {
+  font-size: 11px;
+  color: #7a8599;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.ppt-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ppt-table {
+  width: 100%;
+  min-width: 540px;
+  border-collapse: collapse;
+}
+
+/* 헤더 상단 행 */
+.ppt-th {
+  padding: 8px 10px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  white-space: nowrap;
+}
+
+.ppt-th-cat {
+  background: rgba(255,255,255,0.02);
+  color: #9aa3b4;
+  text-align: left;
+  padding-left: 16px;
+  min-width: 100px;
+  vertical-align: middle;
+}
+
+.ppt-th-gas {
+  background: rgba(77,148,255,0.08);
+  color: #4d94ff;
+  border-left: 1px solid rgba(77,148,255,0.12);
+}
+
+.ppt-th-die {
+  background: rgba(61,184,140,0.08);
+  color: #3db88c;
+  border-left: 1px solid rgba(61,184,140,0.12);
+}
+
+.ppt-th-sub {
+  background: rgba(255,255,255,0.015);
+  color: #7a8599;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  min-width: 60px;
+}
+
+/* 셀 공통 */
+.ppt-td {
+  padding: 9px 10px;
+  white-space: nowrap;
+}
+
+.ppt-diff-cell {
+  text-align: center;
+}
+
+/* SAIL 행 */
+.ppt-row-sail .ppt-td {
+  background: rgba(77,148,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.ppt-name-sail {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f0f2f5;
+  padding-left: 14px !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ppt-sail-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4d94ff;
+  box-shadow: 0 0 5px rgba(77,148,255,0.6);
+  flex-shrink: 0;
+}
+
+.ppt-price-sail {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0f2f5;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: right;
+  padding-right: 14px !important;
+}
+
+/* 경쟁사 행 */
+.ppt-row-comp .ppt-td {
+  border-bottom: 1px solid rgba(255,255,255,0.025);
+}
+
+.ppt-row-last .ppt-td {
+  border-bottom: 2px solid rgba(255,255,255,0.07);
+}
+
+.ppt-name-comp {
+  font-size: 12px;
+  color: #9aa3b4;
+  padding-left: 28px !important;
+}
+
+.ppt-price-comp {
+  font-size: 13px;
+  color: #c8d1e0;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: right;
+  padding-right: 14px !important;
+}
+
+/* 범례 */
+.ppt-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.01);
+}
+
+.ppt-legend-item {
+  font-size: 11px;
+  color: #7a8599;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+
+
 /* ── Header ── */
 .dash-header {
   padding: 12px 16px;
