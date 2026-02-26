@@ -70,7 +70,6 @@ const STATION_GROUPS = [
   },
 ];
 
-// 2026-02-26 기준 데이터 (prevGasoline/prevDiesel: 전일 가격, null이면 변동 없음)
 const SAMPLE_DATA = {
   date: "2026-02-26",
   nationalAvg: { gasoline: 1691.61, diesel: 1594.93 },
@@ -113,8 +112,8 @@ const SAMPLE_DATA = {
       name: "남부순환로",
       sail:        { gasoline: 1645, diesel: 1545, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "울선",       gasoline: 1615, diesel: 1515, prevGasoline: null, prevDiesel: 1505 },
-        { name: "올리셀프",   gasoline: 1615, diesel: 1515, prevGasoline: null, prevDiesel: 1505 },
+        { name: "울선",         gasoline: 1615, diesel: 1515, prevGasoline: null, prevDiesel: 1505 },
+        { name: "올리셀프",     gasoline: 1615, diesel: 1515, prevGasoline: null, prevDiesel: 1505 },
         { name: "무지개대공원", gasoline: 1625, diesel: 1535, prevGasoline: 1615, prevDiesel: null },
       ],
     },
@@ -122,7 +121,7 @@ const SAMPLE_DATA = {
       name: "온산",
       sail:        { gasoline: 1678, diesel: 1578, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "당월",   gasoline: 1695, diesel: 1535, prevGasoline: null, prevDiesel: null },
+        { name: "당월",    gasoline: 1695, diesel: 1535, prevGasoline: null, prevDiesel: null },
         { name: "온산공단", gasoline: 1685, diesel: 1585, prevGasoline: null, prevDiesel: null },
       ],
     },
@@ -146,32 +145,30 @@ const SAMPLE_DATA = {
   ],
 };
 
-/* ─── 가격 차이 뱃지 ─── */
+/* ─── DiffBadge (카드/포지션바용) ─── */
 const DiffBadge = ({ value, inverted = false }) => {
-  if (value === 0) return <span style={{ color: "#7a8599", fontSize: 12 }}>0</span>;
+  if (value === 0) return <span style={{ color: "#9ca3af", fontSize: 12 }}>0</span>;
   const isPositive = value > 0;
   const color = inverted
-    ? isPositive ? "#e85d5d" : "#3db88c"
-    : isPositive ? "#3db88c" : "#e85d5d";
+    ? (isPositive ? "#ef4444" : "#16a34a")
+    : (isPositive ? "#16a34a" : "#ef4444");
   return (
-    <span style={{ color, fontSize: 12, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+    <span style={{ color, fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
       {isPositive ? "▲" : "▼"}{Math.abs(value)}
     </span>
   );
 };
 
-/* ─── 게시가 현황 테이블 내 diff 셀 ─── */
-const PriceDiff = ({ diff, mode }) => {
+/* ─── TablePriceDiff (게시가 테이블용) ─── */
+const TablePriceDiff = ({ diff, mode }) => {
   if (diff === null || diff === undefined || diff === 0)
-    return <span style={{ color: "#3a4050" }}>—</span>;
+    return <span style={{ color: "#d1d5db" }}>—</span>;
   const isUp = diff > 0;
-  // vs_sail: ▲(초록=당사 유리) / ▼(빨강=당사 불리)
-  // prev:    ▲(오렌지=가격상승) / ▼(파랑=가격하락)
   const color = mode === "vs_sail"
-    ? (isUp ? "#3db88c" : "#e85d5d")
-    : (isUp ? "#ff9f43" : "#60a5fa");
+    ? (isUp ? "#16a34a" : "#ef4444")
+    : (isUp ? "#f59e0b" : "#3b82f6");
   return (
-    <span style={{ color, fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+    <span style={{ color, fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
       {isUp ? "▲" : "▼"}{Math.abs(diff)}
     </span>
   );
@@ -186,6 +183,15 @@ const PostedPriceTable = ({ data }) => (
     </div>
     <div className="ppt-scroll">
       <table className="ppt-table">
+        <colgroup>
+          <col style={{ width: "22%" }} />
+          <col style={{ width: "13%" }} />
+          <col style={{ width: "13%" }} />
+          <col style={{ width: "13%" }} />
+          <col style={{ width: "13%" }} />
+          <col style={{ width: "13%" }} />
+          <col style={{ width: "13%" }} />
+        </colgroup>
         <thead>
           <tr>
             <th rowSpan="2" className="ppt-th ppt-th-cat">구분</th>
@@ -202,24 +208,11 @@ const PostedPriceTable = ({ data }) => (
           </tr>
         </thead>
         <tbody>
-          {data.groups.map((group, gi) => {
-            const sail = group.sail;
-            const pgDiff = sail.prevGasoline != null ? sail.gasoline - sail.prevGasoline : null;
-            const pdDiff = sail.prevDiesel != null ? sail.diesel - sail.prevDiesel : null;
-            return (
-              <tr key={gi}>
-                {/* SAIL row는 tr 1개 + competitor들을 같이 담을 수 없으므로 Fragment 사용 */}
-              </tr>
-            );
-          })}
-          {/* tbody는 React Fragment로 다시 렌더 */}
           {data.groups.flatMap((group, gi) => {
             const sail = group.sail;
             const pgDiff = sail.prevGasoline != null ? sail.gasoline - sail.prevGasoline : null;
             const pdDiff = sail.prevDiesel != null ? sail.diesel - sail.prevDiesel : null;
-
             const rows = [];
-            // SAIL row
             rows.push(
               <tr key={`s-${gi}`} className="ppt-row-sail">
                 <td className="ppt-td ppt-name-sail">
@@ -227,14 +220,13 @@ const PostedPriceTable = ({ data }) => (
                   {group.name}
                 </td>
                 <td className="ppt-td ppt-price-sail">{sail.gasoline.toLocaleString()}</td>
-                <td className="ppt-td ppt-diff-cell"><span style={{ color: "#3a4050" }}>—</span></td>
-                <td className="ppt-td ppt-diff-cell"><PriceDiff diff={pgDiff} mode="prev" /></td>
+                <td className="ppt-td ppt-diff-cell"><span style={{ color: "#d1d5db" }}>—</span></td>
+                <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={pgDiff} mode="prev" /></td>
                 <td className="ppt-td ppt-price-sail">{sail.diesel.toLocaleString()}</td>
-                <td className="ppt-td ppt-diff-cell"><span style={{ color: "#3a4050" }}>—</span></td>
-                <td className="ppt-td ppt-diff-cell"><PriceDiff diff={pdDiff} mode="prev" /></td>
+                <td className="ppt-td ppt-diff-cell"><span style={{ color: "#d1d5db" }}>—</span></td>
+                <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={pdDiff} mode="prev" /></td>
               </tr>
             );
-            // Competitor rows
             group.competitors.forEach((comp, ci) => {
               const gd = comp.gasoline - sail.gasoline;
               const dd = comp.diesel - sail.diesel;
@@ -245,11 +237,11 @@ const PostedPriceTable = ({ data }) => (
                 <tr key={`c-${gi}-${ci}`} className={`ppt-row-comp${isLast ? " ppt-row-last" : ""}`}>
                   <td className="ppt-td ppt-name-comp">{comp.name}</td>
                   <td className="ppt-td ppt-price-comp">{comp.gasoline.toLocaleString()}</td>
-                  <td className="ppt-td ppt-diff-cell"><PriceDiff diff={gd !== 0 ? gd : null} mode="vs_sail" /></td>
-                  <td className="ppt-td ppt-diff-cell"><PriceDiff diff={cpgd} mode="prev" /></td>
+                  <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={gd !== 0 ? gd : null} mode="vs_sail" /></td>
+                  <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={cpgd} mode="prev" /></td>
                   <td className="ppt-td ppt-price-comp">{comp.diesel.toLocaleString()}</td>
-                  <td className="ppt-td ppt-diff-cell"><PriceDiff diff={dd !== 0 ? dd : null} mode="vs_sail" /></td>
-                  <td className="ppt-td ppt-diff-cell"><PriceDiff diff={cpdd} mode="prev" /></td>
+                  <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={dd !== 0 ? dd : null} mode="vs_sail" /></td>
+                  <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={cpdd} mode="prev" /></td>
                 </tr>
               );
             });
@@ -258,21 +250,11 @@ const PostedPriceTable = ({ data }) => (
         </tbody>
       </table>
     </div>
-
-    {/* 범례 */}
     <div className="ppt-legend">
-      <span className="ppt-legend-item">
-        <span style={{ color: "#3db88c", fontWeight: 700 }}>▲</span> 당사대비 경쟁사 높음
-      </span>
-      <span className="ppt-legend-item">
-        <span style={{ color: "#e85d5d", fontWeight: 700 }}>▼</span> 당사대비 경쟁사 낮음
-      </span>
-      <span className="ppt-legend-item">
-        <span style={{ color: "#ff9f43", fontWeight: 700 }}>▲</span> 전일대비 가격상승
-      </span>
-      <span className="ppt-legend-item">
-        <span style={{ color: "#60a5fa", fontWeight: 700 }}>▼</span> 전일대비 가격하락
-      </span>
+      <span className="ppt-legend-item"><span style={{ color: "#16a34a", fontWeight: 700 }}>▲</span> 경쟁사 높음 (당사 유리)</span>
+      <span className="ppt-legend-item"><span style={{ color: "#ef4444", fontWeight: 700 }}>▼</span> 경쟁사 낮음 (당사 불리)</span>
+      <span className="ppt-legend-item"><span style={{ color: "#f59e0b", fontWeight: 700 }}>▲</span> 전일 대비 상승</span>
+      <span className="ppt-legend-item"><span style={{ color: "#3b82f6", fontWeight: 700 }}>▼</span> 전일 대비 하락</span>
     </div>
   </div>
 );
@@ -281,7 +263,7 @@ const PostedPriceTable = ({ data }) => (
 const StatCard = ({ label, value, sub, accent }) => (
   <div className="stat-card">
     <div className="stat-card-label">{label}</div>
-    <div className="stat-card-value" style={{ color: accent || "#f0f2f5" }}>
+    <div className="stat-card-value" style={{ color: accent || "#111827" }}>
       {typeof value === "number" ? value.toLocaleString() : value}
     </div>
     {sub && <div className="stat-card-sub">{sub}</div>}
@@ -295,61 +277,70 @@ const GroupCard = ({ group, fuelType }) => {
   const diff = Math.round(sailPrice - compAvg);
   return (
     <div style={{
-      background: "rgba(255,255,255,0.02)",
-      border: "1px solid rgba(255,255,255,0.06)",
-      borderRadius: 14, overflow: "hidden", transition: "border-color 0.2s",
+      background: "#ffffff",
+      border: "1px solid #e5e7eb",
+      borderRadius: 14,
+      overflow: "hidden",
+      transition: "box-shadow 0.2s",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
     }}
-      onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"}
-      onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"}
+      onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)"}
+      onMouseLeave={e => e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"}
     >
       <div style={{
         padding: "14px 16px",
         background: diff > 0
-          ? "linear-gradient(135deg, rgba(232,93,93,0.1), rgba(232,93,93,0.02))"
+          ? "linear-gradient(135deg, rgba(239,68,68,0.07), rgba(239,68,68,0.02))"
           : diff < 0
-            ? "linear-gradient(135deg, rgba(61,184,140,0.1), rgba(61,184,140,0.02))"
-            : "linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
-        borderBottom: "1px solid rgba(255,255,255,0.05)",
+            ? "linear-gradient(135deg, rgba(22,163,74,0.07), rgba(22,163,74,0.02))"
+            : "linear-gradient(135deg, rgba(0,0,0,0.02), rgba(0,0,0,0.01))",
+        borderBottom: "1px solid #f3f4f6",
         display: "flex", justifyContent: "space-between", alignItems: "center",
       }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#f0f2f5" }}>{group.name}</div>
-          <div style={{ fontSize: 11, color: "#7a8599", marginTop: 2 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>{group.name}</div>
+          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
             {STATION_GROUPS.find(g => g.name === group.name)?.region}
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 11, color: "#7a8599" }}>경쟁 평균 대비</div>
+          <div style={{ fontSize: 11, color: "#9ca3af" }}>경쟁 평균 대비</div>
           <DiffBadge value={diff} inverted />
         </div>
       </div>
+
       <div style={{
-        padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center",
-        background: "rgba(77,148,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.04)",
+        padding: "12px 16px",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        background: "rgba(37,99,235,0.04)",
+        borderBottom: "1px solid #f3f4f6",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4d94ff", boxShadow: "0 0 6px rgba(77,148,255,0.5)" }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#c8d1e0" }}>{group.sail.name || "세일"}</span>
-          <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(77,148,255,0.15)", color: "#4d94ff", fontWeight: 700 }}>당사</span>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563eb", boxShadow: "0 0 5px rgba(37,99,235,0.5)" }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#1e40af" }}>{group.sail.name || "세일"}</span>
+          <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(37,99,235,0.12)", color: "#2563eb", fontWeight: 700 }}>당사</span>
         </div>
-        <span style={{ fontSize: 18, fontWeight: 700, color: "#f0f2f5", fontFamily: "'JetBrains Mono', monospace" }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: "#111827", fontFamily: "'JetBrains Mono', monospace" }}>
           {sailPrice.toLocaleString()}
         </span>
       </div>
+
       {group.competitors.map((comp, i) => {
         const priceDiff = comp[fuelType] - sailPrice;
         return (
           <div key={i} style={{
-            padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center",
-            borderBottom: i < group.competitors.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none",
+            padding: "10px 16px",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            borderBottom: i < group.competitors.length - 1 ? "1px solid #f9fafb" : "none",
+            background: "#ffffff",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#555d6e" }} />
-              <span style={{ fontSize: 13, color: "#9aa3b4" }}>{comp.name}</span>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#d1d5db" }} />
+              <span style={{ fontSize: 13, color: "#6b7280" }}>{comp.name}</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <DiffBadge value={priceDiff} />
-              <span style={{ fontSize: 15, fontWeight: 600, color: "#c8d1e0", fontFamily: "'JetBrains Mono', monospace", minWidth: 52, textAlign: "right" }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "#374151", fontFamily: "'JetBrains Mono', monospace", minWidth: 52, textAlign: "right" }}>
                 {comp[fuelType].toLocaleString()}
               </span>
             </div>
@@ -372,20 +363,23 @@ const PositionBar = ({ group, fuelType, nationalAvg }) => {
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#c8d1e0" }}>{group.name}</span>
-        <span style={{ fontSize: 12, color: "#7a8599", fontFamily: "'JetBrains Mono', monospace" }}>{sailPrice.toLocaleString()}원</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>{group.name}</span>
+        <span style={{ fontSize: 12, color: "#6b7280", fontFamily: "'JetBrains Mono', monospace" }}>
+          {sailPrice.toLocaleString()}원
+        </span>
       </div>
-      <div style={{ position: "relative", height: 8, borderRadius: 4, background: "rgba(255,255,255,0.06)", overflow: "visible" }}>
-        <div style={{ position: "absolute", left: `${avgPos}%`, top: -3, width: 2, height: 14, background: "#ff9f43", borderRadius: 1, zIndex: 2 }} />
+      <div style={{ position: "relative", height: 8, borderRadius: 4, background: "#e5e7eb", overflow: "visible" }}>
+        <div style={{ position: "absolute", left: `${avgPos}%`, top: -3, width: 2, height: 14, background: "#f59e0b", borderRadius: 1, zIndex: 2 }} />
         <div style={{
           position: "absolute", left: `${sailPos}%`, top: -4, width: 16, height: 16, borderRadius: "50%",
-          background: sailPrice <= nationalAvg ? "#3db88c" : "#e85d5d",
-          border: "2px solid #0d1017", transform: "translateX(-50%)", zIndex: 3,
-          boxShadow: `0 0 8px ${sailPrice <= nationalAvg ? "rgba(61,184,140,0.4)" : "rgba(232,93,93,0.4)"}`,
+          background: sailPrice <= nationalAvg ? "#16a34a" : "#ef4444",
+          border: "2px solid #ffffff",
+          transform: "translateX(-50%)", zIndex: 3,
+          boxShadow: `0 0 8px ${sailPrice <= nationalAvg ? "rgba(22,163,74,0.4)" : "rgba(239,68,68,0.4)"}`,
         }} />
         {group.competitors.map((c, i) => {
           const pos = ((c[fuelType] - min) / range) * 100;
-          return <div key={i} style={{ position: "absolute", left: `${pos}%`, top: 0, width: 8, height: 8, borderRadius: "50%", background: "#555d6e", transform: "translateX(-50%)", zIndex: 1 }} />;
+          return <div key={i} style={{ position: "absolute", left: `${pos}%`, top: 0, width: 8, height: 8, borderRadius: "50%", background: "#9ca3af", transform: "translateX(-50%)", zIndex: 1 }} />;
         })}
       </div>
     </div>
@@ -402,7 +396,7 @@ const SailLogo = () => (
       </svg>
     </div>
     <div className="dash-title-block">
-      <h1>SAIL 유가 모니터링</h1>
+      <h1>주식회사 세일 게시가 모니터링</h1>
       <div className="dash-sub">세일 주유소 가격 경쟁력 대시보드</div>
     </div>
   </div>
@@ -452,28 +446,12 @@ export default function SailDashboard() {
           });
         }
       } catch (e) { console.warn("Failed national avg:", e); }
-
       const groups = STATION_GROUPS.map(g => ({
         name: g.name,
-        sail: {
-          name: results[g.sail.id]?.name || g.sail.name,
-          gasoline: results[g.sail.id]?.gasoline || 0,
-          diesel: results[g.sail.id]?.diesel || 0,
-          prevGasoline: null, prevDiesel: null,
-        },
-        competitors: g.competitors.map(c => ({
-          name: results[c.id]?.name || c.name,
-          gasoline: results[c.id]?.gasoline || 0,
-          diesel: results[c.id]?.diesel || 0,
-          prevGasoline: null, prevDiesel: null,
-        })),
+        sail: { name: results[g.sail.id]?.name || g.sail.name, gasoline: results[g.sail.id]?.gasoline || 0, diesel: results[g.sail.id]?.diesel || 0, prevGasoline: null, prevDiesel: null },
+        competitors: g.competitors.map(c => ({ name: results[c.id]?.name || c.name, gasoline: results[c.id]?.gasoline || 0, diesel: results[c.id]?.diesel || 0, prevGasoline: null, prevDiesel: null })),
       }));
-      setData(prev => ({
-        ...prev,
-        date: new Date().toISOString().split("T")[0],
-        nationalAvg,
-        groups: groups.some(g => g.sail.gasoline > 0) ? groups : prev.groups,
-      }));
+      setData(prev => ({ ...prev, date: new Date().toISOString().split("T")[0], nationalAvg, groups: groups.some(g => g.sail.gasoline > 0) ? groups : prev.groups }));
       setApiStatus("live");
     } catch (e) {
       console.error("API fetch failed:", e);
@@ -489,8 +467,7 @@ export default function SailDashboard() {
     let lowestDiff = Infinity, lowestDiffGroup = "";
     let belowAvgCount = 0;
     groups.forEach(g => {
-      const sp = g.sail[fuelType];
-      totalSail += sp;
+      const sp = g.sail[fuelType]; totalSail += sp;
       g.competitors.forEach(c => { totalComp += c[fuelType]; compCount++; });
       const compAvg = g.competitors.reduce((s, c) => s + c[fuelType], 0) / g.competitors.length;
       const diff = sp - compAvg;
@@ -502,8 +479,6 @@ export default function SailDashboard() {
       sailAvg: Math.round(totalSail / groups.length),
       compAvg: Math.round(totalComp / compCount),
       overallDiff: Math.round(totalSail / groups.length - totalComp / compCount),
-      highestDiff: Math.round(highestDiff), highestDiffGroup,
-      lowestDiff: Math.round(lowestDiff), lowestDiffGroup,
       belowAvgCount, totalGroups: groups.length,
     };
   }, [data, fuelType]);
@@ -514,11 +489,13 @@ export default function SailDashboard() {
       return { name: g.name, 세일: g.sail[fuelType], 경쟁평균: compAvg, diff: g.sail[fuelType] - compAvg };
     }), [data, fuelType]);
 
-  const statusColor = apiStatus === "live" ? "#3db88c" : apiStatus === "error" ? "#e85d5d" : "#ff9f43";
+  const statusColor = apiStatus === "live" ? "#16a34a" : apiStatus === "error" ? "#ef4444" : "#f59e0b";
   const statusLabel = apiStatus === "live" ? "실시간" : apiStatus === "error" ? "오류" : "샘플";
 
+  const tooltipStyle = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, color: "#111827", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" };
+
   return (
-    <div style={{ minHeight: "100vh", background: "#0d1017", color: "#f0f2f5", fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#f0f4f8", color: "#111827", fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap" rel="stylesheet" />
 
       {/* ── Header ── */}
@@ -528,21 +505,21 @@ export default function SailDashboard() {
           <div className="toggle-group">
             {[{ key: "gasoline", label: "휘발유" }, { key: "diesel", label: "경유" }].map(f => (
               <button key={f.key} onClick={() => setFuelType(f.key)} className="toggle-btn" style={{
-                background: fuelType === f.key ? "rgba(77,148,255,0.2)" : "transparent",
-                color: fuelType === f.key ? "#4d94ff" : "#7a8599",
+                background: fuelType === f.key ? "rgba(37,99,235,0.1)" : "transparent",
+                color: fuelType === f.key ? "#2563eb" : "#6b7280",
               }}>{f.label}</button>
             ))}
           </div>
           <div className="toggle-group">
             {[{ key: "overview", label: "종합" }, { key: "detail", label: "상세" }, { key: "trend", label: "추세" }].map(v => (
               <button key={v.key} onClick={() => setActiveView(v.key)} className="toggle-btn" style={{
-                background: activeView === v.key ? "rgba(255,255,255,0.08)" : "transparent",
-                color: activeView === v.key ? "#f0f2f5" : "#7a8599",
+                background: activeView === v.key ? "rgba(0,0,0,0.08)" : "transparent",
+                color: activeView === v.key ? "#111827" : "#6b7280",
               }}>{v.label}</button>
             ))}
           </div>
           <div className="status-bar">
-            <div className="status-dot" style={{ background: statusColor, boxShadow: `0 0 6px ${statusColor}88` }} />
+            <div className="status-dot" style={{ background: statusColor, boxShadow: `0 0 5px ${statusColor}88` }} />
             <span className="status-label">{statusLabel} · {data.date}</span>
             <button onClick={fetchLiveData} disabled={loading} className="refresh-btn">
               {loading ? "⟳ 로딩..." : "⟳ 갱신"}
@@ -556,26 +533,25 @@ export default function SailDashboard() {
 
         {/* Summary Cards */}
         <div className="summary-grid">
-          <StatCard label={`세일 평균 ${fuelLabel}`} value={summary.sailAvg} sub="원/리터" accent="#4d94ff" />
-          <StatCard label={`경쟁사 평균 ${fuelLabel}`} value={summary.compAvg} sub="원/리터" />
+          <StatCard label={`세일 평균 ${fuelLabel}`} value={summary.sailAvg} sub="원/리터" accent="#2563eb" />
+          <StatCard label={`경쟁사 평균 ${fuelLabel}`} value={summary.compAvg} sub="원/리터" accent="#374151" />
           <StatCard
             label="평균 가격차"
             value={`${summary.overallDiff > 0 ? "+" : ""}${summary.overallDiff}`}
             sub={summary.overallDiff > 0 ? "경쟁사보다 높음" : "경쟁사보다 낮음"}
-            accent={summary.overallDiff > 0 ? "#e85d5d" : "#3db88c"}
+            accent={summary.overallDiff > 0 ? "#ef4444" : "#16a34a"}
           />
           <StatCard
             label="전국 평균 이하"
             value={`${summary.belowAvgCount}/${summary.totalGroups}`}
             sub={`전국 평균 ${data.nationalAvg[fuelType].toLocaleString()}원`}
-            accent="#ff9f43"
+            accent="#f59e0b"
           />
         </div>
 
         {/* ── OVERVIEW ── */}
         {activeView === "overview" && (
           <>
-            {/* 게시가 현황 테이블 */}
             <PostedPriceTable data={data} />
 
             {/* 지점별 가격 비교 차트 */}
@@ -583,27 +559,23 @@ export default function SailDashboard() {
               <div className="panel-header">
                 <h2 className="panel-title">지점별 가격 비교 · {fuelLabel}</h2>
                 <div className="legend-group">
-                  <span className="legend-item">
-                    <span style={{ width: 10, height: 10, borderRadius: 2, background: "#4d94ff", display: "inline-block" }} /> 세일
-                  </span>
-                  <span className="legend-item">
-                    <span style={{ width: 10, height: 10, borderRadius: 2, background: "#555d6e", display: "inline-block" }} /> 경쟁 평균
-                  </span>
+                  <span className="legend-item"><span style={{ width: 10, height: 10, borderRadius: 2, background: "#2563eb", display: "inline-block", opacity: 0.7 }} /> 세일</span>
+                  <span className="legend-item"><span style={{ width: 10, height: 10, borderRadius: 2, background: "#9ca3af", display: "inline-block" }} /> 경쟁 평균</span>
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={compChartData} barGap={4} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="name" tick={{ fill: "#7a8599", fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis domain={["dataMin - 40", "dataMax + 20"]} tick={{ fill: "#7a8599", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ background: "#1a1e2a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12, color: "#f0f2f5" }} formatter={(v) => [`${v.toLocaleString()}원`]} />
-                  <ReferenceLine y={data.nationalAvg[fuelType]} stroke="#ff9f43" strokeDasharray="5 5" strokeWidth={1} label={{ value: `전국 ${data.nationalAvg[fuelType].toLocaleString()}`, position: "right", fill: "#ff9f43", fontSize: 10 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
+                  <XAxis dataKey="name" tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis domain={["dataMin - 40", "dataMax + 20"]} tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v.toLocaleString()}원`]} />
+                  <ReferenceLine y={data.nationalAvg[fuelType]} stroke="#f59e0b" strokeDasharray="5 5" strokeWidth={1.5} label={{ value: `전국 ${data.nationalAvg[fuelType].toLocaleString()}`, position: "right", fill: "#f59e0b", fontSize: 10 }} />
                   <Bar dataKey="세일" radius={[4, 4, 0, 0]} maxBarSize={34}>
                     {compChartData.map((entry, i) => (
-                      <Cell key={i} fill={entry.diff > 0 ? "rgba(232,93,93,0.7)" : "rgba(77,148,255,0.7)"} />
+                      <Cell key={i} fill={entry.diff > 0 ? "rgba(239,68,68,0.7)" : "rgba(37,99,235,0.7)"} />
                     ))}
                   </Bar>
-                  <Bar dataKey="경쟁평균" fill="#555d6e" radius={[4, 4, 0, 0]} maxBarSize={34} />
+                  <Bar dataKey="경쟁평균" fill="#9ca3af" radius={[4, 4, 0, 0]} maxBarSize={34} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -613,10 +585,10 @@ export default function SailDashboard() {
               <div className="panel-header">
                 <h2 className="panel-title">전국 평균 대비 포지션 · {fuelLabel}</h2>
                 <div className="legend-group">
-                  <span className="legend-item"><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#3db88c", display: "inline-block" }} /> 평균 이하</span>
-                  <span className="legend-item"><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#e85d5d", display: "inline-block" }} /> 평균 이상</span>
-                  <span className="legend-item"><span style={{ width: 2, height: 10, background: "#ff9f43", display: "inline-block" }} /> 전국 평균</span>
-                  <span className="legend-item"><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#555d6e", display: "inline-block" }} /> 경쟁사</span>
+                  <span className="legend-item"><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#16a34a", display: "inline-block" }} /> 평균 이하</span>
+                  <span className="legend-item"><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ef4444", display: "inline-block" }} /> 평균 이상</span>
+                  <span className="legend-item"><span style={{ width: 2, height: 10, background: "#f59e0b", display: "inline-block" }} /> 전국 평균</span>
+                  <span className="legend-item"><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#9ca3af", display: "inline-block" }} /> 경쟁사</span>
                 </div>
               </div>
               {data.groups.map((g, i) => (
@@ -631,15 +603,15 @@ export default function SailDashboard() {
                 const compMin = Math.min(...g.competitors.map(c => c[fuelType]));
                 const diff = g.sail[fuelType] - compMin;
                 if (diff > 20) return (
-                  <div key={i} className="alert-item" style={{ background: "rgba(232,93,93,0.06)", borderLeft: "3px solid #e85d5d", color: "#d4a0a0" }}>
+                  <div key={i} className="alert-item" style={{ background: "rgba(239,68,68,0.06)", borderLeft: "3px solid #ef4444", color: "#7f1d1d" }}>
                     <span style={{ fontSize: 15, flexShrink: 0 }}>⚠</span>
-                    <span><strong style={{ color: "#e85d5d" }}>{g.name}</strong> — 최저가 경쟁사 대비 <strong style={{ color: "#e85d5d" }}>+{diff}원</strong> 높음</span>
+                    <span><strong style={{ color: "#ef4444" }}>{g.name}</strong> — 최저가 경쟁사 대비 <strong style={{ color: "#ef4444" }}>+{diff}원</strong> 높음</span>
                   </div>
                 );
                 if (diff < -10) return (
-                  <div key={i} className="alert-item" style={{ background: "rgba(61,184,140,0.06)", borderLeft: "3px solid #3db88c", color: "#a0d4bc" }}>
+                  <div key={i} className="alert-item" style={{ background: "rgba(22,163,74,0.06)", borderLeft: "3px solid #16a34a", color: "#14532d" }}>
                     <span style={{ fontSize: 15, flexShrink: 0 }}>✓</span>
-                    <span><strong style={{ color: "#3db88c" }}>{g.name}</strong> — 최저가 경쟁사 대비 <strong style={{ color: "#3db88c" }}>{diff}원</strong> 낮음 (경쟁력 우위)</span>
+                    <span><strong style={{ color: "#16a34a" }}>{g.name}</strong> — 최저가 경쟁사 대비 <strong style={{ color: "#16a34a" }}>{diff}원</strong> 낮음 (경쟁력 우위)</span>
                   </div>
                 );
                 return null;
@@ -661,26 +633,26 @@ export default function SailDashboard() {
             <h2 className="panel-title" style={{ marginBottom: 20 }}>최근 7일 가격 추세 · {fuelLabel}</h2>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={data.trend} margin={{ top: 5, right: 20, left: -15, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                <XAxis dataKey="date" tick={{ fill: "#7a8599", fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis domain={["dataMin - 10", "dataMax + 10"]} tick={{ fill: "#7a8599", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ background: "#1a1e2a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12, color: "#f0f2f5" }} formatter={(v) => [`${v.toLocaleString()}원`]} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: 12, color: "#7a8599" }} />
-                <Line type="monotone" dataKey="sail" name="세일 평균" stroke="#4d94ff" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                <Line type="monotone" dataKey="competitor" name="경쟁사 평균" stroke="#555d6e" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" />
-                <Line type="monotone" dataKey="national" name="전국 평균" stroke="#ff9f43" strokeWidth={1.5} dot={{ r: 3 }} strokeDasharray="2 2" />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
+                <XAxis dataKey="date" tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis domain={["dataMin - 10", "dataMax + 10"]} tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v.toLocaleString()}원`]} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 12, color: "#6b7280" }} />
+                <Line type="monotone" dataKey="sail" name="세일 평균" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="competitor" name="경쟁사 평균" stroke="#9ca3af" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" />
+                <Line type="monotone" dataKey="national" name="전국 평균" stroke="#f59e0b" strokeWidth={1.5} dot={{ r: 3 }} strokeDasharray="2 2" />
               </LineChart>
             </ResponsiveContainer>
             <div className="trend-summary">
               <div>
-                <span style={{ color: "#7a8599" }}>세일 평균 추이: </span>
-                <span style={{ color: "#4d94ff", fontWeight: 600 }}>{data.trend[0]?.sail} → {data.trend[data.trend.length - 1]?.sail}</span>
-                <span style={{ marginLeft: 4 }}>({data.trend[data.trend.length - 1]?.sail - data.trend[0]?.sail > 0 ? "+" : ""}{data.trend[data.trend.length - 1]?.sail - data.trend[0]?.sail}원)</span>
+                <span style={{ color: "#9ca3af" }}>세일 평균 추이: </span>
+                <span style={{ color: "#2563eb", fontWeight: 600 }}>{data.trend[0]?.sail} → {data.trend[data.trend.length - 1]?.sail}</span>
+                <span style={{ marginLeft: 4, color: "#6b7280" }}>({data.trend[data.trend.length - 1]?.sail - data.trend[0]?.sail > 0 ? "+" : ""}{data.trend[data.trend.length - 1]?.sail - data.trend[0]?.sail}원)</span>
               </div>
               <div>
-                <span style={{ color: "#7a8599" }}>경쟁 평균 추이: </span>
-                <span style={{ color: "#9aa3b4", fontWeight: 600 }}>{data.trend[0]?.competitor} → {data.trend[data.trend.length - 1]?.competitor}</span>
-                <span style={{ marginLeft: 4 }}>({data.trend[data.trend.length - 1]?.competitor - data.trend[0]?.competitor > 0 ? "+" : ""}{data.trend[data.trend.length - 1]?.competitor - data.trend[0]?.competitor}원)</span>
+                <span style={{ color: "#9ca3af" }}>경쟁 평균 추이: </span>
+                <span style={{ color: "#374151", fontWeight: 600 }}>{data.trend[0]?.competitor} → {data.trend[data.trend.length - 1]?.competitor}</span>
+                <span style={{ marginLeft: 4, color: "#6b7280" }}>({data.trend[data.trend.length - 1]?.competitor - data.trend[0]?.competitor > 0 ? "+" : ""}{data.trend[data.trend.length - 1]?.competitor - data.trend[0]?.competitor}원)</span>
               </div>
             </div>
           </div>
@@ -688,7 +660,7 @@ export default function SailDashboard() {
       </main>
 
       <footer className="dash-footer">
-        <span>SAIL 유가 모니터링 대시보드 · 오피넷 API 기반</span>
+        <span>주식회사 세일 게시가 모니터링 대시보드 · 오피넷 API 기반</span>
         <span>업데이트: 1시 · 2시 · 9시 · 12시 · 16시 · 19시</span>
       </footer>
     </div>
