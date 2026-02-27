@@ -96,64 +96,71 @@ const applyPrevDiffs = (groups, prevData) => {
 const STATION_GROUPS = [
   {
     name: "광교신도시", region: "경기 수원", regionCode: "02",
-    sail: { id: "A0032871", name: "광교신도시주유소" },
+    sail: { id: "A0032871", name: "광교신도시주유소", brand: "S-OIL" },
     competitors: [
-      { id: "A0008889", name: "기흥서일" },
-      { id: "A0008895", name: "언남에너지" },
+      { id: "A0008889", name: "기흥서일",   brand: "GS칼텍스" },
+      { id: "A0008895", name: "언남에너지", brand: "S-OIL" },
     ],
   },
   {
     name: "안양", region: "경기 안양", regionCode: "02",
-    sail: { id: "A0000180", name: "안양주유소" },
+    sail: { id: "A0000180", name: "안양주유소", brand: "S-OIL" },
     competitors: [
-      { id: "A0001856", name: "청기와" },
-      { id: "A0001905", name: "안양알찬" },
+      { id: "A0001856", name: "청기와",   brand: "HD현대오일" },
+      { id: "A0001905", name: "안양알찬", brand: "S-OIL" },
     ],
   },
   {
     name: "박달", region: "경기 안양", regionCode: "02",
-    sail: { id: "A0000263", name: "박달주유소" },
+    sail: { id: "A0000263", name: "박달주유소", brand: "S-OIL" },
     competitors: [
-      { id: "A0001980", name: "세광 푸른" },
-      { id: "A0001938", name: "안양원예농협" },
-      { id: "A0009185", name: "무지내" },
+      { id: "A0001980", name: "세광 푸른",    brand: "HD현대오일" },
+      { id: "A0001938", name: "안양원예농협", brand: "NH-OIL" },
+      { id: "A0009185", name: "무지내",       brand: "알뜰" },
     ],
   },
   {
     name: "일품", region: "경기 고양", regionCode: "02",
-    sail: { id: "A0005430", name: "일품주유소" },
+    sail: { id: "A0005430", name: "일품주유소", brand: "S-OIL" },
     competitors: [
-      { id: "A0005555", name: "원흥고양" },
-      { id: "A0005565", name: "우주" },
-      { id: "A0005163", name: "너명골" },
+      { id: "A0005555", name: "원흥고양", brand: "HD현대오일" },
+      { id: "A0005565", name: "우주",     brand: "S-OIL" },
+      { id: "A0005163", name: "너명골",   brand: "S-OIL" },
     ],
   },
   {
     name: "남부순환로", region: "울산 울주", regionCode: "14",
-    sail: { id: "A0031528", name: "남부순환로주유소" },
+    sail: { id: "A0031528", name: "남부순환로주유소", brand: "S-OIL" },
     competitors: [
-      { id: "A0028919", name: "울선" },
-      { id: "A0028937", name: "올리셀프" },
-      { id: "A0028856", name: "무지개대공원" },
+      { id: "A0028919", name: "울선",         brand: "GS칼텍스" },
+      { id: "A0028937", name: "올리셀프",     brand: "S-OIL" },
+      { id: "A0028856", name: "무지개대공원", brand: "SK에너지" },
     ],
   },
   {
     name: "온산", region: "울산 울주", regionCode: "14",
-    sail: { id: "A0029052", name: "세일 온산주유소" },
+    sail: { id: "A0029052", name: "세일 온산주유소", brand: "S-OIL" },
     competitors: [
-      { id: "A0029042", name: "당월" },
-      { id: "A0029175", name: "온산공단" },
+      { id: "A0029042", name: "당월",     brand: "S-OIL" },
+      { id: "A0029175", name: "온산공단", brand: "S-OIL" },
     ],
   },
   {
     name: "용인제1", region: "경기 용인", regionCode: "02",
-    sail: { id: "A0008842", name: "용인제1주유소" },
+    sail: { id: "A0008842", name: "용인제1주유소", brand: "S-OIL" },
     competitors: [
-      { id: "A0008792", name: "청정에너지" },
-      { id: "A0008889", name: "기흥서일" },
+      { id: "A0008792", name: "청정에너지", brand: "S-OIL" },
+      { id: "A0008889", name: "기흥서일",   brand: "GS칼텍스" },
     ],
   },
 ];
+
+/* 정유사 브랜드 조회 헬퍼 */
+const getSailBrand  = (groupName) =>
+  STATION_GROUPS.find(g => g.name === groupName)?.sail.brand ?? "";
+const getCompBrand  = (groupName, compName) =>
+  STATION_GROUPS.find(g => g.name === groupName)
+    ?.competitors.find(c => c.name === compName)?.brand ?? "";
 
 const SAMPLE_DATA = {
   date: "2026-02-26",
@@ -308,7 +315,8 @@ const PostedPriceTable = ({ data, prevDate }) => (
               <tr key={`s-${gi}`} className="ppt-row-sail">
                 <td className="ppt-td ppt-name-sail">
                   <span className="ppt-sail-dot" />
-                  {group.name}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{group.name}</span>
+                  <span style={{ fontSize: 9, color: "#9ca3af", fontWeight: 400, flexShrink: 0 }}>({getSailBrand(group.name)})</span>
                 </td>
                 <td className="ppt-td ppt-price-sail">{sail.gasoline.toLocaleString()}</td>
                 <td className="ppt-td ppt-diff-cell"><span style={{ color: "#d1d5db" }}>—</span></td>
@@ -326,7 +334,9 @@ const PostedPriceTable = ({ data, prevDate }) => (
               const isLast = ci === group.competitors.length - 1;
               rows.push(
                 <tr key={`c-${gi}-${ci}`} className={`ppt-row-comp${isLast ? " ppt-row-last" : ""}`}>
-                  <td className="ppt-td ppt-name-comp">{comp.name}</td>
+                  <td className="ppt-td ppt-name-comp">
+                    {comp.name}<span style={{ fontSize: 9, color: "#b0b8c1" }}> ({getCompBrand(group.name, comp.name)})</span>
+                  </td>
                   <td className="ppt-td ppt-price-comp">{comp.gasoline.toLocaleString()}</td>
                   <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={gd !== 0 ? gd : null} mode="vs_sail" /></td>
                   <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={cpgd} mode="prev" /></td>
@@ -428,6 +438,7 @@ const GroupCard = ({ group, fuelType }) => {
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#d1d5db" }} />
               <span style={{ fontSize: 13, color: "#6b7280" }}>{comp.name}</span>
+              <span style={{ fontSize: 10, color: "#b0b8c1" }}>({getCompBrand(group.name, comp.name)})</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <DiffBadge value={priceDiff} />
