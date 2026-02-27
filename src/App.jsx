@@ -519,6 +519,57 @@ const SailLogo = () => (
   </div>
 );
 
+/* ─── Password Gate ─── */
+const PW_HASH = "b8aad43aa70f296fa14de9dd9992b1064bf456c13212f459d55b3bfea13281e2";
+
+async function hashPw(pw) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function PasswordGate({ children }) {
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem("sail_auth") === "1");
+  const [input, setInput] = useState("");
+  const [error, setError] = useState(false);
+  const [shake, setShake] = useState(false);
+
+  if (authed) return children;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const hash = await hashPw(input);
+    if (hash === PW_HASH) {
+      sessionStorage.setItem("sail_auth", "1");
+      setAuthed(true);
+    } else {
+      setError(true);
+      setInput("");
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+    }
+  };
+
+  return (
+    <div className="pg-overlay">
+      <form className={`pg-card${shake ? " pg-shake" : ""}`} onSubmit={handleSubmit}>
+        <div className="pg-logo">S</div>
+        <h2 className="pg-title">SAIL Dashboard</h2>
+        <p className="pg-sub">비밀번호를 입력하세요</p>
+        <input
+          className={`pg-input${error ? " pg-input-err" : ""}`}
+          type="password"
+          value={input}
+          onChange={e => { setInput(e.target.value); setError(false); }}
+          placeholder="Password"
+          autoFocus
+        />
+        {error && <p className="pg-error">비밀번호가 올바르지 않습니다</p>}
+        <button className="pg-btn" type="submit">확인</button>
+      </form>
+    </div>
+  );
+}
+
 /* ─── Main Dashboard ─── */
 export default function SailDashboard() {
   const [data, setData] = useState(makeEmptyData);  // 초기에는 빈 상태 (가격 0)
@@ -655,6 +706,7 @@ export default function SailDashboard() {
   const tooltipStyle = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, color: "#111827", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" };
 
   return (
+    <PasswordGate>
     <div style={{ minHeight: "100vh", background: "#f0f4f8", color: "#111827", fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap" rel="stylesheet" />
 
@@ -824,5 +876,6 @@ export default function SailDashboard() {
         <span>업데이트: 1시 · 2시 · 9시 · 12시 · 16시 · 19시</span>
       </footer>
     </div>
+    </PasswordGate>
   );
 }
