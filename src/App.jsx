@@ -16,7 +16,17 @@ const API_BASE = "https://www.opinet.co.kr/api";
 ══════════════════════════════════════ */
 const STORE_KEY = "sail_price_history";
 
-const getTodayStr = () => new Date().toISOString().split("T")[0];
+// KST(UTC+9) 기준 날짜 문자열 반환 — UTC 사용 시 한국 자정 전후 날짜 오류 방지
+const getKSTDateStr = () => {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().split("T")[0];
+};
+
+// KST 기준 "YYYY-MM-DD HH:mm" 문자열 반환
+const getKSTDateTimeStr = () => {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().replace("T", " ").substring(0, 16);
+};
 
 /** 오늘 날짜 기준으로 가격 데이터를 localStorage에 저장 */
 const savePricesToLocal = (date, groups) => {
@@ -43,7 +53,7 @@ const savePricesToLocal = (date, groups) => {
 /** 오늘 이전 날짜 중 가장 최근 데이터를 가져옴 */
 const loadPrevDayData = () => {
   try {
-    const today = getTodayStr();
+    const today = getKSTDateStr();
     const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
     const prevDates = Object.keys(history).filter(d => d < today).sort().reverse();
     if (!prevDates.length) return null;
@@ -481,12 +491,13 @@ export default function SailDashboard() {
   const [apiStatus, setApiStatus] = useState("sample");
   const [activeView, setActiveView] = useState("overview");
   const [prevDateLabel, setPrevDateLabel] = useState(null);
+  const [lastFetchTime, setLastFetchTime] = useState(null); // 실시간 갱신 시각 (KST)
 
   // 앱 최초 로드 시:
   // 1) localStorage에서 이전 날짜 가격을 불러와 전일대비 계산
   // 2) 오늘 날짜로 현재 샘플 가격 저장 (다음날 전일대비용)
   useEffect(() => {
-    const today = getTodayStr();
+    const today = getKSTDateStr();
     const prevData = loadPrevDayData();
     if (prevData) {
       setPrevDateLabel(prevData.date);
@@ -540,7 +551,7 @@ export default function SailDashboard() {
         sail: { name: results[g.sail.id]?.name || g.sail.name, gasoline: results[g.sail.id]?.gasoline || 0, diesel: results[g.sail.id]?.diesel || 0, prevGasoline: null, prevDiesel: null },
         competitors: g.competitors.map(c => ({ name: results[c.id]?.name || c.name, gasoline: results[c.id]?.gasoline || 0, diesel: results[c.id]?.diesel || 0, prevGasoline: null, prevDiesel: null })),
       }));
-      const today = getTodayStr();
+      const today = getKSTDateStr();
       const validGroups = groups.some(g => g.sail.gasoline > 0) ? groups : null;
 
       if (validGroups) {
@@ -556,6 +567,7 @@ export default function SailDashboard() {
       } else {
         setData(prev => ({ ...prev, date: today, nationalAvg }));
       }
+      setLastFetchTime(getKSTDateTimeStr()); // 실제 갱신 시각 기록
       setApiStatus("live");
     } catch (e) {
       console.error("API fetch failed:", e);
@@ -594,7 +606,13 @@ export default function SailDashboard() {
     }), [data, fuelType]);
 
   const statusColor = apiStatus === "live" ? "#16a34a" : apiStatus === "error" ? "#ef4444" : "#f59e0b";
-  const statusLabel = apiStatus === "live" ? "실시간" : apiStatus === "error" ? "오류" : "샘플";
+
+  // 헤더 상태 텍스트: 실시간이면 갱신 날짜+시간, 샘플이면 데이터 날짜
+  const statusText = apiStatus === "live" && lastFetchTime
+    ? `실시간 현황 · ${lastFetchTime}`
+    : apiStatus === "error"
+      ? `오류 · ${data.date}`
+      : `샘플 데이터 · ${data.date}`;
 
   const tooltipStyle = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, color: "#111827", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" };
 
@@ -624,7 +642,7 @@ export default function SailDashboard() {
           </div>
           <div className="status-bar">
             <div className="status-dot" style={{ background: statusColor, boxShadow: `0 0 5px ${statusColor}88` }} />
-            <span className="status-label">{statusLabel} · {data.date}</span>
+            <span className="status-label">{statusText}</span>
             <button onClick={fetchLiveData} disabled={loading} className="refresh-btn">
               {loading ? "⟳ 로딩..." : "⟳ 갱신"}
             </button>
