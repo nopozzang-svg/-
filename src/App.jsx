@@ -494,10 +494,28 @@ export default function SailDashboard() {
   const [lastFetchTime, setLastFetchTime] = useState(null); // 실시간 갱신 시각 (KST)
 
   // 앱 최초 로드 시:
-  // 1) localStorage에서 이전 날짜 가격을 불러와 전일대비 계산
-  // 2) 오늘 날짜로 현재 샘플 가격 저장 (다음날 전일대비용)
+  // 1) SAMPLE_DATA(2026-02-26)를 최초 1회 localStorage에 시드 → 전일대비 즉시 동작
+  // 2) 오늘 날짜로 현재 샘플 가격 저장
+  // 3) localStorage에서 이전 날짜 가격 불러와 전일대비 적용
+  // 4) 실시간 API 자동 호출
   useEffect(() => {
     const today = getKSTDateStr();
+
+    // SAMPLE_DATA 날짜(2026-02-26)가 오늘보다 과거이면 baseline으로 1회 저장
+    // → localStorage에 이전 날짜 데이터가 없을 때도 전일대비 즉시 표시 가능
+    if (SAMPLE_DATA.date < today) {
+      try {
+        const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+        if (!history[SAMPLE_DATA.date]) {
+          savePricesToLocal(SAMPLE_DATA.date, SAMPLE_DATA.groups);
+        }
+      } catch (_) {}
+    }
+
+    // 오늘 샘플 데이터 저장 (실시간 데이터 도착 전 fallback)
+    savePricesToLocal(today, SAMPLE_DATA.groups);
+
+    // 전일 데이터 불러와 즉시 적용 (로딩 중에도 전일대비 표시)
     const prevData = loadPrevDayData();
     if (prevData) {
       setPrevDateLabel(prevData.date);
@@ -506,9 +524,10 @@ export default function SailDashboard() {
         groups: applyPrevDiffs(prev.groups, prevData),
       }));
     }
-    // 오늘 샘플 데이터 저장 (API 갱신 전까지의 기준값)
-    savePricesToLocal(today, SAMPLE_DATA.groups);
-  }, []);
+
+    // 실시간 API 자동 호출
+    fetchLiveData();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fuelLabel = fuelType === "gasoline" ? "휘발유" : "경유";
 
