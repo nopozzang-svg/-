@@ -145,14 +145,6 @@ const STATION_GROUPS = [
       { id: "A0029175", name: "온산공단" },
     ],
   },
-  {
-    name: "용인제1", region: "경기 용인", regionCode: "02",
-    sail: { id: "A0008889", name: "기흥서일" },
-    competitors: [
-      { id: "A0008889", name: "기흥서일" },
-      { id: "A0008895", name: "청정에너지" },
-    ],
-  },
 ];
 
 const SAMPLE_DATA = {
@@ -208,14 +200,6 @@ const SAMPLE_DATA = {
       competitors: [
         { name: "당월",     gasoline: 1695, diesel: 1535, prevGasoline: null, prevDiesel: null },
         { name: "온산공단", gasoline: 1685, diesel: 1585, prevGasoline: null, prevDiesel: null },
-      ],
-    },
-    {
-      name: "용인제1",
-      sail:        { gasoline: 1665, diesel: 1575, prevGasoline: null, prevDiesel: null },
-      competitors: [
-        { name: "기흥서일",   gasoline: 1665, diesel: 1595, prevGasoline: null, prevDiesel: null },
-        { name: "청정에너지", gasoline: 1625, diesel: 1545, prevGasoline: null, prevDiesel: null },
       ],
     },
   ],
