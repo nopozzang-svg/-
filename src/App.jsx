@@ -5,8 +5,8 @@ import {
 } from "recharts";
 import "./App.css";
 
-const API_KEY = "F250430333";
-const API_BASE = "https://www.opinet.co.kr/api";
+// API 호출은 /api/opinet 서버리스 프록시를 통해 CORS 우회
+const API_PROXY = "/api/opinet";
 
 /* ══════════════════════════════════════
    전일 가격 localStorage 관리
@@ -520,9 +520,6 @@ export default function SailDashboard() {
       }
     } catch (_) {}
 
-    // 오늘 샘플 데이터 저장 (실시간 데이터 도착 전 fallback)
-    savePricesToLocal(today, SAMPLE_DATA.groups);
-
     // 전일 데이터 불러와 즉시 적용 (로딩 중에도 전일대비 표시)
     const prevData = loadPrevDayData();
     if (prevData) {
@@ -548,7 +545,7 @@ export default function SailDashboard() {
       const results = {};
       for (const id of uniqueIds) {
         try {
-          const res = await fetch(`${API_BASE}/detailById.do?code=${API_KEY}&id=${id}&out=json`);
+          const res = await fetch(`${API_PROXY}?endpoint=detailById.do&id=${id}`);
           const json = await res.json();
           if (json.RESULT?.OIL) {
             const oil = Array.isArray(json.RESULT.OIL) ? json.RESULT.OIL[0] : json.RESULT.OIL;
@@ -564,7 +561,7 @@ export default function SailDashboard() {
       }
       let nationalAvg = { gasoline: 0, diesel: 0 };
       try {
-        const avgRes = await fetch(`${API_BASE}/avgAllPrice.do?code=${API_KEY}&out=json`);
+        const avgRes = await fetch(`${API_PROXY}?endpoint=avgAllPrice.do`);
         const avgJson = await avgRes.json();
         if (avgJson.RESULT?.OIL) {
           avgJson.RESULT.OIL.forEach(o => {
