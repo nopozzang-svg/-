@@ -570,10 +570,11 @@ export default function SailDashboard() {
           });
         }
       } catch (e) { console.warn("Failed national avg:", e); }
+      // 경쟁사 이름은 항상 STATION_GROUPS 기준 이름 사용 (localStorage 키 일관성 보장)
       const groups = STATION_GROUPS.map(g => ({
         name: g.name,
-        sail: { name: results[g.sail.id]?.name || g.sail.name, gasoline: results[g.sail.id]?.gasoline || 0, diesel: results[g.sail.id]?.diesel || 0, prevGasoline: null, prevDiesel: null },
-        competitors: g.competitors.map(c => ({ name: results[c.id]?.name || c.name, gasoline: results[c.id]?.gasoline || 0, diesel: results[c.id]?.diesel || 0, prevGasoline: null, prevDiesel: null })),
+        sail: { name: g.sail.name, gasoline: results[g.sail.id]?.gasoline || 0, diesel: results[g.sail.id]?.diesel || 0, prevGasoline: null, prevDiesel: null },
+        competitors: g.competitors.map(c => ({ name: c.name, gasoline: results[c.id]?.gasoline || 0, diesel: results[c.id]?.diesel || 0, prevGasoline: null, prevDiesel: null })),
       }));
       const today = getKSTDateStr();
       const validGroups = groups.some(g => g.sail.gasoline > 0) ? groups : null;
@@ -588,11 +589,13 @@ export default function SailDashboard() {
         const groupsWithDiff = applyPrevDiffs(validGroups, prevData);
 
         setData(prev => ({ ...prev, date: today, nationalAvg, groups: groupsWithDiff }));
+        setLastFetchTime(getKSTDateTimeStr());
+        setApiStatus("live");
       } else {
+        // API 호출은 성공했지만 가격 데이터가 없는 경우 — 샘플 상태 유지
         setData(prev => ({ ...prev, date: today, nationalAvg }));
+        setApiStatus("error");
       }
-      setLastFetchTime(getKSTDateTimeStr()); // 실제 갱신 시각 기록
-      setApiStatus("live");
     } catch (e) {
       console.error("API fetch failed:", e);
       setApiStatus("error");
