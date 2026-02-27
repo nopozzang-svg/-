@@ -237,6 +237,18 @@ const SAMPLE_DATA = {
   ],
 };
 
+/* 초기 로딩 상태 — 가격 0으로 세팅 (실시간 데이터 오기 전까지 "—" 표시) */
+const makeEmptyData = () => ({
+  date: getKSTDateStr(),
+  nationalAvg: { gasoline: 0, diesel: 0 },
+  groups: STATION_GROUPS.map(g => ({
+    name: g.name,
+    sail: { name: g.sail.name, gasoline: 0, diesel: 0, prevGasoline: null, prevDiesel: null },
+    competitors: g.competitors.map(c => ({ name: c.name, gasoline: 0, diesel: 0, prevGasoline: null, prevDiesel: null })),
+  })),
+  trend: SAMPLE_DATA.trend,
+});
+
 /* ─── DiffBadge (카드/포지션바용) ─── */
 const DiffBadge = ({ value, inverted = false }) => {
   if (value === 0) return <span style={{ color: "#9ca3af", fontSize: 12 }}>0</span>;
@@ -314,14 +326,16 @@ const PostedPriceTable = ({ data, prevDate }) => (
             rows.push(
               <tr key={`s-${gi}`} className="ppt-row-sail">
                 <td className="ppt-td ppt-name-sail">
-                  <span className="ppt-sail-dot" />
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{group.name}</span>
-                  <span style={{ fontSize: 9, color: "#9ca3af", fontWeight: 400, flexShrink: 0 }}>({getSailBrand(group.name)})</span>
+                  <div className="ppt-name-sail-row">
+                    <span className="ppt-sail-dot" />
+                    <span className="ppt-name-sail-text">{group.name}</span>
+                  </div>
+                  <span className="ppt-brand-label" style={{ paddingLeft: 11 }}>{getSailBrand(group.name)}</span>
                 </td>
-                <td className="ppt-td ppt-price-sail">{sail.gasoline.toLocaleString()}</td>
+                <td className="ppt-td ppt-price-sail">{sail.gasoline > 0 ? sail.gasoline.toLocaleString() : <span style={{color:"#d1d5db"}}>—</span>}</td>
                 <td className="ppt-td ppt-diff-cell"><span style={{ color: "#d1d5db" }}>—</span></td>
                 <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={pgDiff} mode="prev" /></td>
-                <td className="ppt-td ppt-price-sail">{sail.diesel.toLocaleString()}</td>
+                <td className="ppt-td ppt-price-sail">{sail.diesel > 0 ? sail.diesel.toLocaleString() : <span style={{color:"#d1d5db"}}>—</span>}</td>
                 <td className="ppt-td ppt-diff-cell"><span style={{ color: "#d1d5db" }}>—</span></td>
                 <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={pdDiff} mode="prev" /></td>
               </tr>
@@ -335,13 +349,14 @@ const PostedPriceTable = ({ data, prevDate }) => (
               rows.push(
                 <tr key={`c-${gi}-${ci}`} className={`ppt-row-comp${isLast ? " ppt-row-last" : ""}`}>
                   <td className="ppt-td ppt-name-comp">
-                    {comp.name}<span style={{ fontSize: 9, color: "#b0b8c1" }}> ({getCompBrand(group.name, comp.name)})</span>
+                    <div className="ppt-name-comp-text">{comp.name}</div>
+                    <div className="ppt-brand-label">{getCompBrand(group.name, comp.name)}</div>
                   </td>
-                  <td className="ppt-td ppt-price-comp">{comp.gasoline.toLocaleString()}</td>
-                  <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={gd !== 0 ? gd : null} mode="vs_sail" /></td>
+                  <td className="ppt-td ppt-price-comp">{comp.gasoline > 0 ? comp.gasoline.toLocaleString() : <span style={{color:"#d1d5db"}}>—</span>}</td>
+                  <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={comp.gasoline > 0 && sail.gasoline > 0 ? (gd !== 0 ? gd : null) : null} mode="vs_sail" /></td>
                   <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={cpgd} mode="prev" /></td>
-                  <td className="ppt-td ppt-price-comp">{comp.diesel.toLocaleString()}</td>
-                  <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={dd !== 0 ? dd : null} mode="vs_sail" /></td>
+                  <td className="ppt-td ppt-price-comp">{comp.diesel > 0 ? comp.diesel.toLocaleString() : <span style={{color:"#d1d5db"}}>—</span>}</td>
+                  <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={comp.diesel > 0 && sail.diesel > 0 ? (dd !== 0 ? dd : null) : null} mode="vs_sail" /></td>
                   <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={cpdd} mode="prev" /></td>
                 </tr>
               );
@@ -506,42 +521,25 @@ const SailLogo = () => (
 
 /* ─── Main Dashboard ─── */
 export default function SailDashboard() {
-  const [data, setData] = useState(SAMPLE_DATA);
+  const [data, setData] = useState(makeEmptyData);  // 초기에는 빈 상태 (가격 0)
   const [fuelType, setFuelType] = useState("gasoline");
   const [loading, setLoading] = useState(false);
-  const [apiStatus, setApiStatus] = useState("sample");
+  const [apiStatus, setApiStatus] = useState("loading");  // 첫 로드는 loading 상태
   const [activeView, setActiveView] = useState("overview");
   const [prevDateLabel, setPrevDateLabel] = useState(null);
-  const [lastFetchTime, setLastFetchTime] = useState(null); // 실시간 갱신 시각 (KST)
+  const [lastFetchTime, setLastFetchTime] = useState(null);
 
   // 앱 최초 로드 시:
-  // 1) 어제 날짜로 SAMPLE_DATA baseline 시드 → 전일대비 어제 기준으로 즉시 동작
-  // 2) 오늘 날짜로 현재 샘플 가격 저장
-  // 3) localStorage에서 전일 가격 불러와 전일대비 적용
-  // 4) 실시간 API 자동 호출
+  // 1) 어제 날짜로 SAMPLE_DATA baseline 시드 → 전일대비 기준 확보
+  // 2) 실시간 API 자동 호출 (가격은 API 응답 후에만 표시)
   useEffect(() => {
-    const today = getKSTDateStr();
     const yesterday = getKSTYesterdayStr();
-
-    // 어제 날짜로 baseline 1회 시드 — 데이터 없을 때도 전일(어제) 기준으로 전일대비 표시
     try {
       const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
       if (!history[yesterday]) {
         savePricesToLocal(yesterday, SAMPLE_DATA.groups);
       }
     } catch (_) {}
-
-    // 전일 데이터 불러와 즉시 적용 (로딩 중에도 전일대비 표시)
-    const prevData = loadPrevDayData();
-    if (prevData) {
-      setPrevDateLabel(prevData.date);
-      setData(prev => ({
-        ...prev,
-        groups: applyPrevDiffs(prev.groups, prevData),
-      }));
-    }
-
-    // 실시간 API 자동 호출
     fetchLiveData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -648,9 +646,11 @@ export default function SailDashboard() {
   // 헤더 상태 텍스트: 실시간이면 갱신 날짜+시간, 샘플이면 데이터 날짜
   const statusText = apiStatus === "live" && lastFetchTime
     ? `실시간 현황 · ${lastFetchTime}`
-    : apiStatus === "error"
-      ? `오류 · ${data.date}`
-      : `샘플 데이터 · ${data.date}`;
+    : apiStatus === "loading"
+      ? "데이터 불러오는 중..."
+      : apiStatus === "error"
+        ? `오류 · ${data.date}`
+        : `샘플 데이터 · ${data.date}`;
 
   const tooltipStyle = { background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, color: "#111827", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" };
 
@@ -693,18 +693,18 @@ export default function SailDashboard() {
 
         {/* Summary Cards */}
         <div className="summary-grid">
-          <StatCard label={`세일 평균 ${fuelLabel}`} value={summary.sailAvg} sub="원/리터" accent="#2563eb" />
-          <StatCard label={`경쟁사 평균 ${fuelLabel}`} value={summary.compAvg} sub="원/리터" accent="#374151" />
+          <StatCard label={`세일 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.sailAvg} sub="원/리터" accent="#2563eb" />
+          <StatCard label={`경쟁사 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.compAvg} sub="원/리터" accent="#374151" />
           <StatCard
             label="평균 가격차"
-            value={`${summary.overallDiff > 0 ? "+" : ""}${summary.overallDiff}`}
-            sub={summary.overallDiff > 0 ? "경쟁사보다 높음" : "경쟁사보다 낮음"}
+            value={apiStatus === "loading" ? "—" : `${summary.overallDiff > 0 ? "+" : ""}${summary.overallDiff}`}
+            sub={apiStatus === "loading" ? "" : (summary.overallDiff > 0 ? "경쟁사보다 높음" : "경쟁사보다 낮음")}
             accent={summary.overallDiff > 0 ? "#ef4444" : "#16a34a"}
           />
           <StatCard
             label="전국 평균 이하"
-            value={`${summary.belowAvgCount}/${summary.totalGroups}`}
-            sub={`전국 평균 ${data.nationalAvg[fuelType].toLocaleString()}원`}
+            value={apiStatus === "loading" ? "—" : `${summary.belowAvgCount}/${summary.totalGroups}`}
+            sub={apiStatus === "loading" ? "" : `전국 평균 ${data.nationalAvg[fuelType].toLocaleString()}원`}
             accent="#f59e0b"
           />
         </div>

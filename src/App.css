@@ -89,7 +89,7 @@
 
 /* 셀 공통 */
 .ppt-td {
-  padding: 8px 4px;
+  padding: 6px 3px;
   white-space: nowrap;
 }
 
@@ -103,15 +103,29 @@
   border-bottom: 1px solid #e5e7eb;
 }
 
+/* 세일 이름 셀 — 이름·브랜드 세로 배치 */
 .ppt-name-sail {
-  font-size: 12px;
-  font-weight: 700;
-  color: #111827;
   padding-left: 10px !important;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 1px;
   overflow: hidden;
+}
+
+.ppt-name-sail-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.ppt-name-sail-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ppt-sail-dot {
@@ -124,13 +138,23 @@
   flex-shrink: 0;
 }
 
+/* 정유사 브랜드 표시 (두 번째 줄) */
+.ppt-brand-label {
+  font-size: 9px;
+  color: #b0b8c1;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .ppt-price-sail {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: #111827;
   font-family: 'JetBrains Mono', monospace;
   text-align: right;
-  padding-right: 6px !important;
+  padding-right: 5px !important;
 }
 
 /* 경쟁사 행 */
@@ -142,20 +166,29 @@
   border-bottom: 2px solid #e5e7eb;
 }
 
+/* 경쟁사 이름 셀 — 이름·브랜드 세로 배치 */
 .ppt-name-comp {
-  font-size: 11px;
+  padding-left: 16px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.ppt-name-comp-text {
+  font-size: 10px;
   color: #6b7280;
-  padding-left: 20px !important;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ppt-price-comp {
-  font-size: 12px;
+  font-size: 11px;
   color: #374151;
   font-family: 'JetBrains Mono', monospace;
   text-align: right;
-  padding-right: 6px !important;
+  padding-right: 5px !important;
 }
 
 /* 범례 */
