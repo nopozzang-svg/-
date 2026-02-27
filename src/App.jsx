@@ -22,6 +22,12 @@ const getKSTDateStr = () => {
   return kst.toISOString().split("T")[0];
 };
 
+// KST 기준 어제 날짜 문자열 반환
+const getKSTYesterdayStr = () => {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000 - 24 * 60 * 60 * 1000);
+  return kst.toISOString().split("T")[0];
+};
+
 // KST 기준 "YYYY-MM-DD HH:mm" 문자열 반환
 const getKSTDateTimeStr = () => {
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -50,11 +56,15 @@ const savePricesToLocal = (date, groups) => {
   } catch (_) { /* localStorage 사용 불가 환경 대응 */ }
 };
 
-/** 오늘 이전 날짜 중 가장 최근 데이터를 가져옴 */
+/** 전일 데이터를 가져옴 — 어제 날짜를 우선 탐색, 없으면 가장 최근 과거 날짜 */
 const loadPrevDayData = () => {
   try {
     const today = getKSTDateStr();
+    const yesterday = getKSTYesterdayStr();
     const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    // 어제 데이터가 있으면 우선 사용
+    if (history[yesterday]) return { date: yesterday, snapshot: history[yesterday] };
+    // 없으면 오늘 이전 가장 최근 날짜 fallback
     const prevDates = Object.keys(history).filter(d => d < today).sort().reverse();
     if (!prevDates.length) return null;
     return { date: prevDates[0], snapshot: history[prevDates[0]] };
@@ -494,23 +504,21 @@ export default function SailDashboard() {
   const [lastFetchTime, setLastFetchTime] = useState(null); // 실시간 갱신 시각 (KST)
 
   // 앱 최초 로드 시:
-  // 1) SAMPLE_DATA(2026-02-26)를 최초 1회 localStorage에 시드 → 전일대비 즉시 동작
+  // 1) 어제 날짜로 SAMPLE_DATA baseline 시드 → 전일대비 어제 기준으로 즉시 동작
   // 2) 오늘 날짜로 현재 샘플 가격 저장
-  // 3) localStorage에서 이전 날짜 가격 불러와 전일대비 적용
+  // 3) localStorage에서 전일 가격 불러와 전일대비 적용
   // 4) 실시간 API 자동 호출
   useEffect(() => {
     const today = getKSTDateStr();
+    const yesterday = getKSTYesterdayStr();
 
-    // SAMPLE_DATA 날짜(2026-02-26)가 오늘보다 과거이면 baseline으로 1회 저장
-    // → localStorage에 이전 날짜 데이터가 없을 때도 전일대비 즉시 표시 가능
-    if (SAMPLE_DATA.date < today) {
-      try {
-        const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-        if (!history[SAMPLE_DATA.date]) {
-          savePricesToLocal(SAMPLE_DATA.date, SAMPLE_DATA.groups);
-        }
-      } catch (_) {}
-    }
+    // 어제 날짜로 baseline 1회 시드 — 데이터 없을 때도 전일(어제) 기준으로 전일대비 표시
+    try {
+      const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+      if (!history[yesterday]) {
+        savePricesToLocal(yesterday, SAMPLE_DATA.groups);
+      }
+    } catch (_) {}
 
     // 오늘 샘플 데이터 저장 (실시간 데이터 도착 전 fallback)
     savePricesToLocal(today, SAMPLE_DATA.groups);
