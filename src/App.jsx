@@ -10,11 +10,11 @@ const API_PROXY = "/api/opinet";
 
 /* ══════════════════════════════════════
    전일 가격 localStorage 관리
-   - 키: "sail_price_history"
+   - 키: "seoul_price_history"
    - 구조: { "2026-02-25": { 지점명: { sg, sd, comp: { 경쟁사명: { g, d } } } } }
    - 최대 7일치 보관, 자동 삭제
 ══════════════════════════════════════ */
-const STORE_KEY = "sail_price_history";
+const STORE_KEY = "seoul_price_history";
 
 // KST(UTC+9) 기준 날짜 문자열 반환 — UTC 사용 시 한국 자정 전후 날짜 오류 방지
 const getKSTDateStr = () => {
@@ -41,8 +41,8 @@ const savePricesToLocal = (date, groups) => {
     const snapshot = {};
     groups.forEach(g => {
       snapshot[g.name] = {
-        sg: g.sail.gasoline,   // sail gasoline
-        sd: g.sail.diesel,     // sail diesel
+        sg: g.sail.gasoline,
+        sd: g.sail.diesel,
         comp: Object.fromEntries(
           g.competitors.map(c => [c.name, { g: c.gasoline, d: c.diesel }])
         ),
@@ -53,7 +53,7 @@ const savePricesToLocal = (date, groups) => {
     const keys = Object.keys(history).sort();
     while (keys.length > 7) delete history[keys.shift()];
     localStorage.setItem(STORE_KEY, JSON.stringify(history));
-  } catch (_) { /* localStorage 사용 불가 환경 대응 */ }
+  } catch (_) {}
 };
 
 /** 전일 데이터를 가져옴 — 어제 날짜를 우선 탐색, 없으면 가장 최근 과거 날짜 */
@@ -62,9 +62,7 @@ const loadPrevDayData = () => {
     const today = getKSTDateStr();
     const yesterday = getKSTYesterdayStr();
     const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-    // 어제 데이터가 있으면 우선 사용
     if (history[yesterday]) return { date: yesterday, snapshot: history[yesterday] };
-    // 없으면 오늘 이전 가장 최근 날짜 fallback
     const prevDates = Object.keys(history).filter(d => d < today).sort().reverse();
     if (!prevDates.length) return null;
     return { date: prevDates[0], snapshot: history[prevDates[0]] };
@@ -95,167 +93,215 @@ const applyPrevDiffs = (groups, prevData) => {
 
 const STATION_GROUPS = [
   {
-    name: "광교신도시", region: "경기 수원", regionCode: "02",
-    sail: { id: "A0032871", name: "광교신도시주유소", brand: "S-OIL" },
+    name: "아산신도시", region: "충남 아산시", regionCode: "05",
+    sail: { id: "A0016223", name: "아산신도시주유소", brand: "SK에너지" },
     competitors: [
-      { id: "A0008889", name: "기흥서일",   brand: "GS칼텍스" },
-      { id: "A0008895", name: "언남에너지", brand: "S-OIL" },
+      { id: "A0015617", name: "호서대",   brand: "SK에너지" },
+      { id: "A0033726", name: "만수르",   brand: "S-OIL" },
+      { id: "A0015946", name: "KTX아산",  brand: "GS칼텍스" },
+      { id: "A0033604", name: "탕정셀프", brand: "SK에너지" },
     ],
   },
   {
-    name: "안양", region: "경기 안양", regionCode: "02",
-    sail: { id: "A0000180", name: "안양주유소", brand: "S-OIL" },
+    name: "항만", region: "경기 평택시", regionCode: "02",
+    sail: { id: "A0003247", name: "항만주유소", brand: "SK에너지" },
     competitors: [
-      { id: "A0001856", name: "청기와",   brand: "HD현대오일" },
-      { id: "A0001905", name: "안양알찬", brand: "S-OIL" },
+      { id: "A0003410", name: "두바이",     brand: "S-OIL" },
+      { id: "A0003060", name: "굿모닝",     brand: "S-OIL" },
+      { id: "A0003336", name: "해안",       brand: "GS칼텍스" },
+      { id: "A0003338", name: "평택항",     brand: "SK에너지" },
+      { id: "A0020350", name: "아산테크노", brand: "GS칼텍스" },
     ],
   },
   {
-    name: "박달", region: "경기 안양", regionCode: "02",
-    sail: { id: "A0000263", name: "박달주유소", brand: "S-OIL" },
+    name: "이에스", region: "경기 평택시", regionCode: "02",
+    sail: { id: "A0000257", name: "서울석유(주)이에스주유소", brand: "SK에너지" },
     competitors: [
-      { id: "A0001980", name: "세광 푸른",    brand: "HD현대오일" },
-      { id: "A0001938", name: "안양원예농협", brand: "NH-OIL" },
-      { id: "A0009185", name: "무지내",       brand: "알뜰" },
+      { id: "A0002766", name: "동1self", brand: "HD현대오일뱅크" },
+      { id: "A0033431", name: "비전",    brand: "GS칼텍스" },
+      { id: "A0002091", name: "세교",    brand: "GS칼텍스" },
     ],
   },
   {
-    name: "일품", region: "경기 고양", regionCode: "02",
-    sail: { id: "A0005430", name: "일품주유소", brand: "S-OIL" },
+    name: "진위산단", region: "경기 평택시", regionCode: "02",
+    sail: { id: "A0008147", name: "서울석유㈜ 진위산단주유소", brand: "SK에너지" },
     competitors: [
-      { id: "A0005555", name: "원흥고양", brand: "HD현대오일" },
-      { id: "A0005565", name: "우주",     brand: "S-OIL" },
-      { id: "A0005163", name: "너명골",   brand: "S-OIL" },
+      { id: "A0007174", name: "그린", brand: "S-OIL" },
+      { id: "A0003413", name: "송탄", brand: "GS칼텍스" },
     ],
   },
   {
-    name: "남부순환로", region: "울산 울주", regionCode: "14",
-    sail: { id: "A0031528", name: "남부순환로주유소", brand: "S-OIL" },
+    name: "현곡", region: "경기 평택시", regionCode: "02",
+    sail: { id: "A0003023", name: "현곡주유소", brand: "SK에너지" },
     competitors: [
-      { id: "A0028919", name: "울선",         brand: "GS칼텍스" },
-      { id: "A0028937", name: "올리셀프",     brand: "S-OIL" },
-      { id: "A0028856", name: "무지개대공원", brand: "SK에너지" },
-    ],
-  },
-  {
-    name: "온산", region: "울산 울주", regionCode: "14",
-    sail: { id: "A0029052", name: "세일 온산주유소", brand: "S-OIL" },
-    competitors: [
-      { id: "A0029042", name: "당월",     brand: "S-OIL" },
-      { id: "A0029175", name: "온산공단", brand: "S-OIL" },
-    ],
-  },
-  {
-    name: "용인제1", region: "경기 용인", regionCode: "02",
-    sail: { id: "A0008842", name: "용인제1주유소", brand: "S-OIL" },
-    competitors: [
-      { id: "A0008792", name: "청정에너지", brand: "S-OIL" },
-      { id: "A0008889", name: "기흥서일",   brand: "GS칼텍스" },
-    ],
-  },
-];
-
-const CHAIN_GROUPS = [
-  {
-    name: "토진", region: "경기 평택시", regionCode: "02",
-    sail: { id: "A0033642", name: "토진주유소", brand: "S-OIL" },
-    competitors: [
-      { id: "A0003404", name: "삼성",      brand: "SK에너지" },
       { id: "A0002949", name: "이케이평택", brand: "HD현대오일뱅크" },
-      { id: "A0003023", name: "현곡",      brand: "SK에너지" },
+      { id: "A0003404", name: "삼성",       brand: "SK에너지" },
+      { id: "A0033642", name: "토진",       brand: "S-OIL" },
+      { id: "A0002990", name: "어연공단",   brand: "SK에너지" },
     ],
   },
   {
-    name: "문장", region: "경기 여주시", regionCode: "02",
-    sail: { id: "A0031202", name: "문장주유소", brand: "S-OIL" },
+    name: "라인45", region: "경기 평택시", regionCode: "02",
+    sail: { id: "A0003342", name: "라인45주유소", brand: "SK에너지" },
     competitors: [
-      { id: "A0003579", name: "시민석화", brand: "GS칼텍스" },
-      { id: "A0003943", name: "이포",    brand: "S-OIL" },
+      { id: "A0016019", name: "아산꿀꿀이", brand: "SK에너지" },
+      { id: "A0016226", name: "아산둔포",   brand: "GS칼텍스" },
+    ],
+  },
+  {
+    name: "탑", region: "경기 수원시", regionCode: "02",
+    sail: { id: "A0000248", name: "탑주유소", brand: "SK에너지" },
+    competitors: [
+      { id: "A0033434", name: "호매실",   brand: "SK에너지" },
+      { id: "A0002183", name: "청호셀프", brand: "SK에너지" },
+      { id: "A0002742", name: "행복",     brand: "S-OIL" },
+    ],
+  },
+  {
+    name: "호평첨단", region: "경기 남양주시", regionCode: "02",
+    sail: { id: "A0006505", name: "서울석유(주) 호평첨단주유소", brand: "SK에너지" },
+    competitors: [
+      { id: "A0006787", name: "호평셀프",   brand: "HD현대오일뱅크" },
+      { id: "A0006689", name: "호평IC",     brand: "S-OIL" },
+      { id: "A0006802", name: "뉴평내셀프", brand: "GS칼텍스" },
+    ],
+  },
+  {
+    name: "구산", region: "경기 하남시", regionCode: "02",
+    sail: { id: "A0003741", name: "서울석유(주) 구산주유소", brand: "SK에너지" },
+    competitors: [
+      { id: "A0033536", name: "유니드",     brand: "SK에너지" },
+      { id: "A0004115", name: "구도일풍산", brand: "S-OIL" },
+      { id: "A0003898", name: "덕풍",       brand: "S-OIL" },
+      { id: "A0000445", name: "베스트원",   brand: "SK에너지" },
+      { id: "A0003640", name: "풍산",       brand: "HD현대오일뱅크" },
+    ],
+  },
+  {
+    name: "동화", region: "경기 화성시", regionCode: "02",
+    sail: { id: "A0002593", name: "동화주유소", brand: "SK에너지" },
+    competitors: [
+      { id: "A0002253", name: "용건릉", brand: "SK에너지" },
+      { id: "A0002322", name: "우리",   brand: "GS칼텍스" },
+      { id: "A0032719", name: "행운",   brand: "HD현대오일뱅크" },
     ],
   },
 ];
 
-const ALL_GROUPS = [...STATION_GROUPS, ...CHAIN_GROUPS];
-
-/* 정유사 브랜드 조회 헬퍼 — 직영 + 계열 통합 탐색 */
+/* 정유사 브랜드 조회 헬퍼 */
 const getSailBrand = (groupName) =>
-  ALL_GROUPS.find(g => g.name === groupName)?.sail.brand ?? "";
+  STATION_GROUPS.find(g => g.name === groupName)?.sail.brand ?? "";
 const getCompBrand = (groupName, compName) =>
-  ALL_GROUPS.find(g => g.name === groupName)
+  STATION_GROUPS.find(g => g.name === groupName)
     ?.competitors.find(c => c.name === compName)?.brand ?? "";
 
 const SAMPLE_DATA = {
-  date: "2026-02-26",
+  date: "2026-03-05",
   nationalAvg: { gasoline: 1691.61, diesel: 1594.93 },
   groups: [
     {
-      name: "광교신도시",
-      sail:        { gasoline: 1665, diesel: 1595, prevGasoline: null, prevDiesel: null },
+      name: "아산신도시",
+      sail:        { gasoline: 1665, diesel: 1575, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "기흥서일",   gasoline: 1665, diesel: 1595, prevGasoline: null, prevDiesel: null },
-        { name: "언남에너지", gasoline: 1625, diesel: 1545, prevGasoline: null, prevDiesel: null },
+        { name: "호서대",   gasoline: 1655, diesel: 1565, prevGasoline: null, prevDiesel: null },
+        { name: "만수르",   gasoline: 1645, diesel: 1555, prevGasoline: null, prevDiesel: null },
+        { name: "KTX아산",  gasoline: 1650, diesel: 1560, prevGasoline: null, prevDiesel: null },
+        { name: "탕정셀프", gasoline: 1640, diesel: 1550, prevGasoline: null, prevDiesel: null },
       ],
     },
     {
-      name: "안양",
-      sail:        { gasoline: 1689, diesel: 1599, prevGasoline: null, prevDiesel: null },
+      name: "항만",
+      sail:        { gasoline: 1668, diesel: 1578, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "청기와",   gasoline: 1668, diesel: 1568, prevGasoline: null, prevDiesel: null },
-        { name: "안양알찬", gasoline: 1755, diesel: 1695, prevGasoline: null, prevDiesel: null },
+        { name: "두바이",     gasoline: 1655, diesel: 1565, prevGasoline: null, prevDiesel: null },
+        { name: "굿모닝",     gasoline: 1650, diesel: 1560, prevGasoline: null, prevDiesel: null },
+        { name: "해안",       gasoline: 1660, diesel: 1570, prevGasoline: null, prevDiesel: null },
+        { name: "평택항",     gasoline: 1658, diesel: 1568, prevGasoline: null, prevDiesel: null },
+        { name: "아산테크노", gasoline: 1645, diesel: 1555, prevGasoline: null, prevDiesel: null },
       ],
     },
     {
-      name: "박달",
-      sail:        { gasoline: 1659, diesel: 1579, prevGasoline: null, prevDiesel: null },
+      name: "이에스",
+      sail:        { gasoline: 1672, diesel: 1582, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "세광 푸른",    gasoline: 1658, diesel: 1538, prevGasoline: null, prevDiesel: null },
-        { name: "안양원예농협", gasoline: 1658, diesel: 1538, prevGasoline: null, prevDiesel: null },
-        { name: "무지내",       gasoline: 1625, diesel: 1534, prevGasoline: null, prevDiesel: null },
+        { name: "동1self", gasoline: 1660, diesel: 1570, prevGasoline: null, prevDiesel: null },
+        { name: "비전",    gasoline: 1655, diesel: 1565, prevGasoline: null, prevDiesel: null },
+        { name: "세교",    gasoline: 1650, diesel: 1560, prevGasoline: null, prevDiesel: null },
       ],
     },
     {
-      name: "일품",
-      sail:        { gasoline: 1642, diesel: 1539, prevGasoline: null, prevDiesel: null },
+      name: "진위산단",
+      sail:        { gasoline: 1660, diesel: 1570, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "원흥고양", gasoline: 1614, diesel: 1514, prevGasoline: null, prevDiesel: null },
-        { name: "우주",     gasoline: 1624, diesel: 1524, prevGasoline: null, prevDiesel: null },
-        { name: "너명골",   gasoline: 1614, diesel: 1514, prevGasoline: null, prevDiesel: null },
+        { name: "그린", gasoline: 1648, diesel: 1558, prevGasoline: null, prevDiesel: null },
+        { name: "송탄", gasoline: 1653, diesel: 1563, prevGasoline: null, prevDiesel: null },
       ],
     },
     {
-      name: "남부순환로",
-      sail:        { gasoline: 1645, diesel: 1545, prevGasoline: null, prevDiesel: null },
+      name: "현곡",
+      sail:        { gasoline: 1658, diesel: 1568, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "울선",         gasoline: 1615, diesel: 1515, prevGasoline: null, prevDiesel: null },
-        { name: "올리셀프",     gasoline: 1615, diesel: 1515, prevGasoline: null, prevDiesel: null },
-        { name: "무지개대공원", gasoline: 1625, diesel: 1535, prevGasoline: null, prevDiesel: null },
+        { name: "이케이평택", gasoline: 1648, diesel: 1558, prevGasoline: null, prevDiesel: null },
+        { name: "삼성",       gasoline: 1652, diesel: 1562, prevGasoline: null, prevDiesel: null },
+        { name: "토진",       gasoline: 1645, diesel: 1555, prevGasoline: null, prevDiesel: null },
+        { name: "어연공단",   gasoline: 1650, diesel: 1560, prevGasoline: null, prevDiesel: null },
       ],
     },
     {
-      name: "온산",
-      sail:        { gasoline: 1678, diesel: 1578, prevGasoline: null, prevDiesel: null },
+      name: "라인45",
+      sail:        { gasoline: 1662, diesel: 1572, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "당월",     gasoline: 1695, diesel: 1535, prevGasoline: null, prevDiesel: null },
-        { name: "온산공단", gasoline: 1685, diesel: 1585, prevGasoline: null, prevDiesel: null },
+        { name: "아산꿀꿀이", gasoline: 1650, diesel: 1560, prevGasoline: null, prevDiesel: null },
+        { name: "아산둔포",   gasoline: 1645, diesel: 1555, prevGasoline: null, prevDiesel: null },
       ],
     },
     {
-      name: "용인제1",
-      sail:        { gasoline: 1665, diesel: 1595, prevGasoline: null, prevDiesel: null },
+      name: "탑",
+      sail:        { gasoline: 1670, diesel: 1580, prevGasoline: null, prevDiesel: null },
       competitors: [
-        { name: "청정에너지", gasoline: 1655, diesel: 1545, prevGasoline: null, prevDiesel: null },
-        { name: "기흥서일",   gasoline: 1665, diesel: 1595, prevGasoline: null, prevDiesel: null },
+        { name: "호매실",   gasoline: 1658, diesel: 1568, prevGasoline: null, prevDiesel: null },
+        { name: "청호셀프", gasoline: 1655, diesel: 1565, prevGasoline: null, prevDiesel: null },
+        { name: "행복",     gasoline: 1648, diesel: 1558, prevGasoline: null, prevDiesel: null },
+      ],
+    },
+    {
+      name: "호평첨단",
+      sail:        { gasoline: 1675, diesel: 1585, prevGasoline: null, prevDiesel: null },
+      competitors: [
+        { name: "호평셀프",   gasoline: 1660, diesel: 1570, prevGasoline: null, prevDiesel: null },
+        { name: "호평IC",     gasoline: 1655, diesel: 1565, prevGasoline: null, prevDiesel: null },
+        { name: "뉴평내셀프", gasoline: 1650, diesel: 1560, prevGasoline: null, prevDiesel: null },
+      ],
+    },
+    {
+      name: "구산",
+      sail:        { gasoline: 1668, diesel: 1578, prevGasoline: null, prevDiesel: null },
+      competitors: [
+        { name: "유니드",     gasoline: 1655, diesel: 1565, prevGasoline: null, prevDiesel: null },
+        { name: "구도일풍산", gasoline: 1648, diesel: 1558, prevGasoline: null, prevDiesel: null },
+        { name: "덕풍",       gasoline: 1650, diesel: 1560, prevGasoline: null, prevDiesel: null },
+        { name: "베스트원",   gasoline: 1653, diesel: 1563, prevGasoline: null, prevDiesel: null },
+        { name: "풍산",       gasoline: 1645, diesel: 1555, prevGasoline: null, prevDiesel: null },
+      ],
+    },
+    {
+      name: "동화",
+      sail:        { gasoline: 1662, diesel: 1572, prevGasoline: null, prevDiesel: null },
+      competitors: [
+        { name: "용건릉", gasoline: 1652, diesel: 1562, prevGasoline: null, prevDiesel: null },
+        { name: "우리",   gasoline: 1648, diesel: 1558, prevGasoline: null, prevDiesel: null },
+        { name: "행운",   gasoline: 1645, diesel: 1555, prevGasoline: null, prevDiesel: null },
       ],
     },
   ],
   trend: [
-    { date: "02/20", sail: 1650, competitor: 1637, national: 1690 },
-    { date: "02/21", sail: 1652, competitor: 1638, national: 1690 },
-    { date: "02/22", sail: 1655, competitor: 1640, national: 1691 },
-    { date: "02/23", sail: 1657, competitor: 1641, national: 1691 },
-    { date: "02/24", sail: 1658, competitor: 1642, national: 1691 },
-    { date: "02/25", sail: 1659, competitor: 1643, national: 1692 },
-    { date: "02/26", sail: 1663, competitor: 1644, national: 1692 },
+    { date: "02/27", sail: 1660, competitor: 1648, national: 1692 },
+    { date: "02/28", sail: 1662, competitor: 1649, national: 1692 },
+    { date: "03/01", sail: 1663, competitor: 1650, national: 1691 },
+    { date: "03/02", sail: 1665, competitor: 1651, national: 1691 },
+    { date: "03/03", sail: 1666, competitor: 1652, national: 1691 },
+    { date: "03/04", sail: 1667, competitor: 1653, national: 1692 },
+    { date: "03/05", sail: 1665, competitor: 1652, national: 1692 },
   ],
 };
 
@@ -270,7 +316,6 @@ const makeEmptyData = () => ({
   date: getKSTDateStr(),
   nationalAvg: { gasoline: 0, diesel: 0 },
   groups: makeEmptyGroupRows(STATION_GROUPS),
-  chainGroups: makeEmptyGroupRows(CHAIN_GROUPS),
   trend: SAMPLE_DATA.trend,
 });
 
@@ -304,8 +349,8 @@ const TablePriceDiff = ({ diff, mode }) => {
 };
 
 /* ─── 게시가 현황 테이블 ─── */
-const PostedPriceTable = ({ data, groups: groupsProp, prevDate, title }) => {
-  const groups = groupsProp || data.groups;
+const PostedPriceTable = ({ data, prevDate, title }) => {
+  const groups = data.groups;
   return (
   <div className="ppt-wrap">
     <div className="ppt-head">
@@ -461,7 +506,7 @@ const GroupCard = ({ group, fuelType }) => {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563eb", boxShadow: "0 0 5px rgba(37,99,235,0.5)" }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#1e40af" }}>{group.sail.name || "세일"}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#1e40af" }}>{group.sail.name || "서울석유"}</span>
           <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(37,99,235,0.12)", color: "#2563eb", fontWeight: 700 }}>당사</span>
         </div>
         <span style={{ fontSize: 18, fontWeight: 700, color: "#111827", fontFamily: "'JetBrains Mono', monospace" }}>
@@ -531,8 +576,8 @@ const PositionBar = ({ group, fuelType, nationalAvg }) => {
   );
 };
 
-/* ─── SAIL Logo ─── */
-const SailLogo = () => (
+/* ─── Seoul Oil Logo ─── */
+const SeoulLogo = () => (
   <div className="sail-logo-wrap">
     <div className="sail-logo-badge">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -541,8 +586,8 @@ const SailLogo = () => (
       </svg>
     </div>
     <div className="dash-title-block">
-      <h1>주식회사 세일 게시가 모니터링</h1>
-      <div className="dash-sub">세일 주유소 가격 경쟁력 대시보드</div>
+      <h1>서울석유 게시가 모니터링</h1>
+      <div className="dash-sub">서울석유 직영주유소 가격 경쟁력 대시보드</div>
     </div>
   </div>
 );
@@ -581,7 +626,7 @@ function PasswordGate({ children }) {
     <div className="pg-overlay">
       <form className={`pg-card${shake ? " pg-shake" : ""}`} onSubmit={handleSubmit}>
         <div className="pg-logo">S</div>
-        <h2 className="pg-title">SAIL Dashboard</h2>
+        <h2 className="pg-title">서울석유 직영주유소 게시가 현황</h2>
         <p className="pg-sub">비밀번호를 입력하세요</p>
         <input
           className={`pg-input${error ? " pg-input-err" : ""}`}
@@ -599,18 +644,15 @@ function PasswordGate({ children }) {
 }
 
 /* ─── Main Dashboard ─── */
-export default function SailDashboard() {
-  const [data, setData] = useState(makeEmptyData);  // 초기에는 빈 상태 (가격 0)
+export default function SeoulDashboard() {
+  const [data, setData] = useState(makeEmptyData);
   const [fuelType, setFuelType] = useState("gasoline");
   const [loading, setLoading] = useState(false);
-  const [apiStatus, setApiStatus] = useState("loading");  // 첫 로드는 loading 상태
+  const [apiStatus, setApiStatus] = useState("loading");
   const [activeView, setActiveView] = useState("overview");
   const [prevDateLabel, setPrevDateLabel] = useState(null);
   const [lastFetchTime, setLastFetchTime] = useState(null);
 
-  // 앱 최초 로드 시:
-  // 1) 어제 날짜로 SAMPLE_DATA baseline 시드 → 전일대비 기준 확보
-  // 2) 실시간 API 자동 호출 (가격은 API 응답 후에만 표시)
   useEffect(() => {
     const yesterday = getKSTYesterdayStr();
     try {
@@ -628,7 +670,7 @@ export default function SailDashboard() {
     setLoading(true);
     setApiStatus("loading");
     try {
-      const stationIds = ALL_GROUPS.flatMap(g => [g.sail.id, ...g.competitors.map(c => c.id)]);
+      const stationIds = STATION_GROUPS.flatMap(g => [g.sail.id, ...g.competitors.map(c => c.id)]);
       const uniqueIds = [...new Set(stationIds)];
       const results = {};
       for (const id of uniqueIds) {
@@ -658,34 +700,25 @@ export default function SailDashboard() {
           });
         }
       } catch (e) { console.warn("Failed national avg:", e); }
-      // 경쟁사 이름은 항상 STATION_GROUPS/CHAIN_GROUPS 기준 이름 사용 (localStorage 키 일관성 보장)
-      const buildGroupRows = (groupDefs) => groupDefs.map(g => ({
+
+      const groups = STATION_GROUPS.map(g => ({
         name: g.name,
         sail: { name: g.sail.name, gasoline: results[g.sail.id]?.gasoline || 0, diesel: results[g.sail.id]?.diesel || 0, prevGasoline: null, prevDiesel: null },
         competitors: g.competitors.map(c => ({ name: c.name, gasoline: results[c.id]?.gasoline || 0, diesel: results[c.id]?.diesel || 0, prevGasoline: null, prevDiesel: null })),
       }));
-      const groups = buildGroupRows(STATION_GROUPS);
-      const chainGroups = buildGroupRows(CHAIN_GROUPS);
+
       const today = getKSTDateStr();
       const validGroups = groups.some(g => g.sail.gasoline > 0) ? groups : null;
-      const validChainGroups = chainGroups.some(g => g.sail.gasoline > 0) ? chainGroups : null;
 
-      if (validGroups || validChainGroups) {
-        // 오늘 실시간 가격 저장 (다음날 전일대비용) — 직영 + 계열 통합 저장
-        const allToSave = [...(validGroups || groups), ...(validChainGroups || chainGroups)];
-        savePricesToLocal(today, allToSave);
-
-        // 전일 데이터 불러와 전일대비 계산
+      if (validGroups) {
+        savePricesToLocal(today, validGroups);
         const prevData = loadPrevDayData();
         if (prevData) setPrevDateLabel(prevData.date);
-        const groupsWithDiff = applyPrevDiffs(validGroups || groups, prevData);
-        const chainGroupsWithDiff = applyPrevDiffs(validChainGroups || chainGroups, prevData);
-
-        setData(prev => ({ ...prev, date: today, nationalAvg, groups: groupsWithDiff, chainGroups: chainGroupsWithDiff }));
+        const groupsWithDiff = applyPrevDiffs(validGroups, prevData);
+        setData(prev => ({ ...prev, date: today, nationalAvg, groups: groupsWithDiff }));
         setLastFetchTime(getKSTDateTimeStr());
         setApiStatus("live");
       } else {
-        // API 호출은 성공했지만 가격 데이터가 없는 경우
         setData(prev => ({ ...prev, date: today, nationalAvg }));
         setApiStatus("error");
       }
@@ -699,16 +732,10 @@ export default function SailDashboard() {
   const summary = useMemo(() => {
     const groups = data.groups;
     let totalSail = 0, totalComp = 0, compCount = 0;
-    let highestDiff = -Infinity, highestDiffGroup = "";
-    let lowestDiff = Infinity, lowestDiffGroup = "";
     let belowAvgCount = 0;
     groups.forEach(g => {
       const sp = g.sail[fuelType]; totalSail += sp;
       g.competitors.forEach(c => { totalComp += c[fuelType]; compCount++; });
-      const compAvg = g.competitors.reduce((s, c) => s + c[fuelType], 0) / g.competitors.length;
-      const diff = sp - compAvg;
-      if (diff > highestDiff) { highestDiff = diff; highestDiffGroup = g.name; }
-      if (diff < lowestDiff) { lowestDiff = diff; lowestDiffGroup = g.name; }
       if (sp < data.nationalAvg[fuelType]) belowAvgCount++;
     });
     return {
@@ -722,12 +749,11 @@ export default function SailDashboard() {
   const compChartData = useMemo(() =>
     data.groups.map(g => {
       const compAvg = Math.round(g.competitors.reduce((s, c) => s + c[fuelType], 0) / g.competitors.length);
-      return { name: g.name, 세일: g.sail[fuelType], 경쟁평균: compAvg, diff: g.sail[fuelType] - compAvg };
+      return { name: g.name, 서울석유: g.sail[fuelType], 경쟁평균: compAvg, diff: g.sail[fuelType] - compAvg };
     }), [data, fuelType]);
 
   const statusColor = apiStatus === "live" ? "#16a34a" : apiStatus === "error" ? "#ef4444" : "#f59e0b";
 
-  // 헤더 상태 텍스트: 실시간이면 갱신 날짜+시간, 샘플이면 데이터 날짜
   const statusText = apiStatus === "live" && lastFetchTime
     ? `실시간 현황 · ${lastFetchTime}`
     : apiStatus === "loading"
@@ -745,7 +771,7 @@ export default function SailDashboard() {
 
       {/* ── Header ── */}
       <header className="dash-header">
-        <SailLogo />
+        <SeoulLogo />
         <div className="dash-header-right">
           <div className="toggle-group">
             {[{ key: "gasoline", label: "휘발유" }, { key: "diesel", label: "경유" }].map(f => (
@@ -756,7 +782,7 @@ export default function SailDashboard() {
             ))}
           </div>
           <div className="toggle-group">
-            {[{ key: "overview", label: "종합" }, { key: "detail", label: "상세" }, { key: "trend", label: "추세" }, { key: "chain", label: "계열" }].map(v => (
+            {[{ key: "overview", label: "종합" }, { key: "detail", label: "상세" }, { key: "trend", label: "추세" }].map(v => (
               <button key={v.key} onClick={() => setActiveView(v.key)} className="toggle-btn" style={{
                 background: activeView === v.key ? "rgba(0,0,0,0.08)" : "transparent",
                 color: activeView === v.key ? "#111827" : "#6b7280",
@@ -778,7 +804,7 @@ export default function SailDashboard() {
 
         {/* Summary Cards */}
         <div className="summary-grid">
-          <StatCard label={`세일 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.sailAvg} sub="원/리터" accent="#2563eb" />
+          <StatCard label={`서울석유 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.sailAvg} sub="원/리터" accent="#2563eb" />
           <StatCard label={`경쟁사 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.compAvg} sub="원/리터" accent="#374151" />
           <StatCard
             label="평균 가격차"
@@ -804,7 +830,7 @@ export default function SailDashboard() {
               <div className="panel-header">
                 <h2 className="panel-title">지점별 가격 비교 · {fuelLabel}</h2>
                 <div className="legend-group">
-                  <span className="legend-item"><span style={{ width: 10, height: 10, borderRadius: 2, background: "#2563eb", display: "inline-block", opacity: 0.7 }} /> 세일</span>
+                  <span className="legend-item"><span style={{ width: 10, height: 10, borderRadius: 2, background: "#2563eb", display: "inline-block", opacity: 0.7 }} /> 서울석유</span>
                   <span className="legend-item"><span style={{ width: 10, height: 10, borderRadius: 2, background: "#9ca3af", display: "inline-block" }} /> 경쟁 평균</span>
                 </div>
               </div>
@@ -815,7 +841,7 @@ export default function SailDashboard() {
                   <YAxis domain={["dataMin - 40", "dataMax + 20"]} tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v.toLocaleString()}원`]} />
                   <ReferenceLine y={data.nationalAvg[fuelType]} stroke="#f59e0b" strokeDasharray="5 5" strokeWidth={1.5} label={{ value: `전국 ${data.nationalAvg[fuelType].toLocaleString()}`, position: "right", fill: "#f59e0b", fontSize: 10 }} />
-                  <Bar dataKey="세일" radius={[4, 4, 0, 0]} maxBarSize={34}>
+                  <Bar dataKey="서울석유" radius={[4, 4, 0, 0]} maxBarSize={34}>
                     {compChartData.map((entry, i) => (
                       <Cell key={i} fill={entry.diff > 0 ? "rgba(239,68,68,0.7)" : "rgba(37,99,235,0.7)"} />
                     ))}
@@ -883,14 +909,14 @@ export default function SailDashboard() {
                 <YAxis domain={["dataMin - 10", "dataMax + 10"]} tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v.toLocaleString()}원`]} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: 12, color: "#6b7280" }} />
-                <Line type="monotone" dataKey="sail" name="세일 평균" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="sail" name="서울석유 평균" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
                 <Line type="monotone" dataKey="competitor" name="경쟁사 평균" stroke="#9ca3af" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" />
                 <Line type="monotone" dataKey="national" name="전국 평균" stroke="#f59e0b" strokeWidth={1.5} dot={{ r: 3 }} strokeDasharray="2 2" />
               </LineChart>
             </ResponsiveContainer>
             <div className="trend-summary">
               <div>
-                <span style={{ color: "#9ca3af" }}>세일 평균 추이: </span>
+                <span style={{ color: "#9ca3af" }}>서울석유 평균 추이: </span>
                 <span style={{ color: "#2563eb", fontWeight: 600 }}>{data.trend[0]?.sail} → {data.trend[data.trend.length - 1]?.sail}</span>
                 <span style={{ marginLeft: 4, color: "#6b7280" }}>({data.trend[data.trend.length - 1]?.sail - data.trend[0]?.sail > 0 ? "+" : ""}{data.trend[data.trend.length - 1]?.sail - data.trend[0]?.sail}원)</span>
               </div>
@@ -902,20 +928,10 @@ export default function SailDashboard() {
             </div>
           </div>
         )}
-
-        {/* ── CHAIN (계열) ── */}
-        {activeView === "chain" && (
-          <PostedPriceTable
-            data={data}
-            groups={data.chainGroups}
-            prevDate={prevDateLabel}
-            title="계열 게시가 현황"
-          />
-        )}
       </main>
 
       <footer className="dash-footer">
-        <span>주식회사 세일 게시가 모니터링 대시보드 · 오피넷 API 기반</span>
+        <span>서울석유 게시가 모니터링 대시보드 · 오피넷 API 기반</span>
         <span>업데이트: 1시 · 2시 · 9시 · 12시 · 16시 · 19시</span>
       </footer>
     </div>
