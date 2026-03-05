@@ -155,11 +155,33 @@ const STATION_GROUPS = [
   },
 ];
 
-/* 정유사 브랜드 조회 헬퍼 */
-const getSailBrand  = (groupName) =>
-  STATION_GROUPS.find(g => g.name === groupName)?.sail.brand ?? "";
-const getCompBrand  = (groupName, compName) =>
-  STATION_GROUPS.find(g => g.name === groupName)
+const CHAIN_GROUPS = [
+  {
+    name: "토진", region: "경기 평택시", regionCode: "02",
+    sail: { id: "A0033642", name: "토진주유소", brand: "S-OIL" },
+    competitors: [
+      { id: "A0003404", name: "삼성",      brand: "SK에너지" },
+      { id: "A0002949", name: "이케이평택", brand: "HD현대오일뱅크" },
+      { id: "A0003023", name: "현곡",      brand: "SK에너지" },
+    ],
+  },
+  {
+    name: "문장", region: "경기 여주시", regionCode: "02",
+    sail: { id: "A0031202", name: "문장주유소", brand: "S-OIL" },
+    competitors: [
+      { id: "A0003579", name: "시민석화", brand: "GS칼텍스" },
+      { id: "A0003943", name: "이포",    brand: "S-OIL" },
+    ],
+  },
+];
+
+const ALL_GROUPS = [...STATION_GROUPS, ...CHAIN_GROUPS];
+
+/* 정유사 브랜드 조회 헬퍼 — 직영 + 계열 통합 탐색 */
+const getSailBrand = (groupName) =>
+  ALL_GROUPS.find(g => g.name === groupName)?.sail.brand ?? "";
+const getCompBrand = (groupName, compName) =>
+  ALL_GROUPS.find(g => g.name === groupName)
     ?.competitors.find(c => c.name === compName)?.brand ?? "";
 
 const SAMPLE_DATA = {
@@ -238,14 +260,17 @@ const SAMPLE_DATA = {
 };
 
 /* 초기 로딩 상태 — 가격 0으로 세팅 (실시간 데이터 오기 전까지 "—" 표시) */
+const makeEmptyGroupRows = (groupDefs) => groupDefs.map(g => ({
+  name: g.name,
+  sail: { name: g.sail.name, gasoline: 0, diesel: 0, prevGasoline: null, prevDiesel: null },
+  competitors: g.competitors.map(c => ({ name: c.name, gasoline: 0, diesel: 0, prevGasoline: null, prevDiesel: null })),
+}));
+
 const makeEmptyData = () => ({
   date: getKSTDateStr(),
   nationalAvg: { gasoline: 0, diesel: 0 },
-  groups: STATION_GROUPS.map(g => ({
-    name: g.name,
-    sail: { name: g.sail.name, gasoline: 0, diesel: 0, prevGasoline: null, prevDiesel: null },
-    competitors: g.competitors.map(c => ({ name: c.name, gasoline: 0, diesel: 0, prevGasoline: null, prevDiesel: null })),
-  })),
+  groups: makeEmptyGroupRows(STATION_GROUPS),
+  chainGroups: makeEmptyGroupRows(CHAIN_GROUPS),
   trend: SAMPLE_DATA.trend,
 });
 
@@ -279,10 +304,12 @@ const TablePriceDiff = ({ diff, mode }) => {
 };
 
 /* ─── 게시가 현황 테이블 ─── */
-const PostedPriceTable = ({ data, prevDate }) => (
+const PostedPriceTable = ({ data, groups: groupsProp, prevDate, title }) => {
+  const groups = groupsProp || data.groups;
+  return (
   <div className="ppt-wrap">
     <div className="ppt-head">
-      <span className="ppt-title">게시가 현황</span>
+      <span className="ppt-title">{title || "게시가 현황"}</span>
       <div style={{ textAlign: "right" }}>
         <div className="ppt-date">{data.date}</div>
         {prevDate
@@ -318,7 +345,7 @@ const PostedPriceTable = ({ data, prevDate }) => (
           </tr>
         </thead>
         <tbody>
-          {data.groups.flatMap((group, gi) => {
+          {groups.flatMap((group, gi) => {
             const sail = group.sail;
             const pgDiff = sail.prevGasoline != null ? sail.gasoline - sail.prevGasoline : null;
             const pdDiff = sail.prevDiesel != null ? sail.diesel - sail.prevDiesel : null;
@@ -373,7 +400,8 @@ const PostedPriceTable = ({ data, prevDate }) => (
       <span className="ppt-legend-item"><span style={{ color: "#3b82f6", fontWeight: 700 }}>▼</span> 전일 대비 하락</span>
     </div>
   </div>
-);
+  );
+};
 
 /* ─── StatCard ─── */
 const StatCard = ({ label, value, sub, accent }) => (
@@ -600,7 +628,7 @@ export default function SailDashboard() {
     setLoading(true);
     setApiStatus("loading");
     try {
-      const stationIds = STATION_GROUPS.flatMap(g => [g.sail.id, ...g.competitors.map(c => c.id)]);
+      const stationIds = ALL_GROUPS.flatMap(g => [g.sail.id, ...g.competitors.map(c => c.id)]);
       const uniqueIds = [...new Set(stationIds)];
       const results = {};
       for (const id of uniqueIds) {
@@ -630,29 +658,34 @@ export default function SailDashboard() {
           });
         }
       } catch (e) { console.warn("Failed national avg:", e); }
-      // 경쟁사 이름은 항상 STATION_GROUPS 기준 이름 사용 (localStorage 키 일관성 보장)
-      const groups = STATION_GROUPS.map(g => ({
+      // 경쟁사 이름은 항상 STATION_GROUPS/CHAIN_GROUPS 기준 이름 사용 (localStorage 키 일관성 보장)
+      const buildGroupRows = (groupDefs) => groupDefs.map(g => ({
         name: g.name,
         sail: { name: g.sail.name, gasoline: results[g.sail.id]?.gasoline || 0, diesel: results[g.sail.id]?.diesel || 0, prevGasoline: null, prevDiesel: null },
         competitors: g.competitors.map(c => ({ name: c.name, gasoline: results[c.id]?.gasoline || 0, diesel: results[c.id]?.diesel || 0, prevGasoline: null, prevDiesel: null })),
       }));
+      const groups = buildGroupRows(STATION_GROUPS);
+      const chainGroups = buildGroupRows(CHAIN_GROUPS);
       const today = getKSTDateStr();
       const validGroups = groups.some(g => g.sail.gasoline > 0) ? groups : null;
+      const validChainGroups = chainGroups.some(g => g.sail.gasoline > 0) ? chainGroups : null;
 
-      if (validGroups) {
-        // 오늘 실시간 가격 저장 (다음날 전일대비용)
-        savePricesToLocal(today, validGroups);
+      if (validGroups || validChainGroups) {
+        // 오늘 실시간 가격 저장 (다음날 전일대비용) — 직영 + 계열 통합 저장
+        const allToSave = [...(validGroups || groups), ...(validChainGroups || chainGroups)];
+        savePricesToLocal(today, allToSave);
 
         // 전일 데이터 불러와 전일대비 계산
         const prevData = loadPrevDayData();
         if (prevData) setPrevDateLabel(prevData.date);
-        const groupsWithDiff = applyPrevDiffs(validGroups, prevData);
+        const groupsWithDiff = applyPrevDiffs(validGroups || groups, prevData);
+        const chainGroupsWithDiff = applyPrevDiffs(validChainGroups || chainGroups, prevData);
 
-        setData(prev => ({ ...prev, date: today, nationalAvg, groups: groupsWithDiff }));
+        setData(prev => ({ ...prev, date: today, nationalAvg, groups: groupsWithDiff, chainGroups: chainGroupsWithDiff }));
         setLastFetchTime(getKSTDateTimeStr());
         setApiStatus("live");
       } else {
-        // API 호출은 성공했지만 가격 데이터가 없는 경우 — 샘플 상태 유지
+        // API 호출은 성공했지만 가격 데이터가 없는 경우
         setData(prev => ({ ...prev, date: today, nationalAvg }));
         setApiStatus("error");
       }
@@ -723,7 +756,7 @@ export default function SailDashboard() {
             ))}
           </div>
           <div className="toggle-group">
-            {[{ key: "overview", label: "종합" }, { key: "detail", label: "상세" }, { key: "trend", label: "추세" }].map(v => (
+            {[{ key: "overview", label: "종합" }, { key: "detail", label: "상세" }, { key: "trend", label: "추세" }, { key: "chain", label: "계열" }].map(v => (
               <button key={v.key} onClick={() => setActiveView(v.key)} className="toggle-btn" style={{
                 background: activeView === v.key ? "rgba(0,0,0,0.08)" : "transparent",
                 color: activeView === v.key ? "#111827" : "#6b7280",
@@ -868,6 +901,16 @@ export default function SailDashboard() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* ── CHAIN (계열) ── */}
+        {activeView === "chain" && (
+          <PostedPriceTable
+            data={data}
+            groups={data.chainGroups}
+            prevDate={prevDateLabel}
+            title="계열 게시가 현황"
+          />
         )}
       </main>
 
