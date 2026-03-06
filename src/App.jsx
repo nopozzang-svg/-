@@ -95,7 +95,7 @@ const applyPrevDiffs = (groups, prevData) => {
 
 const STATION_GROUPS = [
   {
-    name: "광교신도시", region: "경기 수원", regionCode: "02", sigunguCode: "41110",
+    name: "광교신도시", region: "경기 수원", regionCode: "02",
     sail: { id: "A0032871", name: "광교신도시주유소", brand: "S-OIL" },
     competitors: [
       { id: "A0008889", name: "기흥서일",   brand: "GS칼텍스" },
@@ -103,7 +103,7 @@ const STATION_GROUPS = [
     ],
   },
   {
-    name: "안양", region: "경기 안양", regionCode: "02", sigunguCode: "41170",
+    name: "안양", region: "경기 안양", regionCode: "02",
     sail: { id: "A0000180", name: "안양주유소", brand: "S-OIL" },
     competitors: [
       { id: "A0001856", name: "청기와",   brand: "HD현대오일" },
@@ -111,7 +111,7 @@ const STATION_GROUPS = [
     ],
   },
   {
-    name: "박달", region: "경기 안양", regionCode: "02", sigunguCode: "41170",
+    name: "박달", region: "경기 안양", regionCode: "02",
     sail: { id: "A0000263", name: "박달주유소", brand: "S-OIL" },
     competitors: [
       { id: "A0001980", name: "세광 푸른",    brand: "HD현대오일" },
@@ -120,7 +120,7 @@ const STATION_GROUPS = [
     ],
   },
   {
-    name: "일품", region: "경기 고양", regionCode: "02", sigunguCode: "41280",
+    name: "일품", region: "경기 고양", regionCode: "02",
     sail: { id: "A0005430", name: "일품주유소", brand: "S-OIL" },
     competitors: [
       { id: "A0005555", name: "원흥고양", brand: "HD현대오일" },
@@ -129,7 +129,7 @@ const STATION_GROUPS = [
     ],
   },
   {
-    name: "남부순환로", region: "울산 울주", regionCode: "14", sigunguCode: "31710",
+    name: "남부순환로", region: "울산 울주", regionCode: "14",
     sail: { id: "A0031528", name: "남부순환로주유소", brand: "S-OIL" },
     competitors: [
       { id: "A0028919", name: "울선",         brand: "GS칼텍스" },
@@ -138,7 +138,7 @@ const STATION_GROUPS = [
     ],
   },
   {
-    name: "온산", region: "울산 울주", regionCode: "14", sigunguCode: "31710",
+    name: "온산", region: "울산 울주", regionCode: "14",
     sail: { id: "A0029052", name: "세일 온산주유소", brand: "S-OIL" },
     competitors: [
       { id: "A0029042", name: "당월",     brand: "S-OIL" },
@@ -146,7 +146,7 @@ const STATION_GROUPS = [
     ],
   },
   {
-    name: "용인제1", region: "경기 용인", regionCode: "02", sigunguCode: "41460",
+    name: "용인제1", region: "경기 용인", regionCode: "02",
     sail: { id: "A0008842", name: "용인제1주유소", brand: "S-OIL" },
     competitors: [
       { id: "A0008792", name: "청정에너지", brand: "S-OIL" },
@@ -157,7 +157,7 @@ const STATION_GROUPS = [
 
 const CHAIN_GROUPS = [
   {
-    name: "토진", region: "경기 평택시", regionCode: "02", sigunguCode: "41220",
+    name: "토진", region: "경기 평택시", regionCode: "02",
     sail: { id: "A0033642", name: "토진주유소", brand: "S-OIL" },
     competitors: [
       { id: "A0003404", name: "삼성",      brand: "SK에너지" },
@@ -166,7 +166,7 @@ const CHAIN_GROUPS = [
     ],
   },
   {
-    name: "문장", region: "경기 여주시", regionCode: "02", sigunguCode: "41670",
+    name: "문장", region: "경기 여주시", regionCode: "02",
     sail: { id: "A0031202", name: "문장주유소", brand: "S-OIL" },
     competitors: [
       { id: "A0003579", name: "시민석화", brand: "GS칼텍스" },
@@ -288,18 +288,6 @@ const DiffBadge = ({ value, inverted = false }) => {
   );
 };
 
-/* ─── RegionRankBadge ─── */
-const RegionRankBadge = ({ rank, total }) => {
-  if (!rank || !total) return null;
-  const pct = rank / total;
-  const color = pct <= 0.3 ? "#ef4444" : pct >= 0.7 ? "#16a34a" : "#9ca3af";
-  return (
-    <div style={{ fontSize: 9, color, fontFamily: "'JetBrains Mono', monospace", marginTop: 2, lineHeight: 1, opacity: 0.85 }}>
-      ({rank}/{total})
-    </div>
-  );
-};
-
 /* ─── TablePriceDiff (게시가 테이블용) ─── */
 const TablePriceDiff = ({ diff, mode }) => {
   if (diff === null || diff === undefined || diff === 0)
@@ -371,16 +359,10 @@ const PostedPriceTable = ({ data, groups: groupsProp, prevDate, title }) => {
                   </div>
                   <span className="ppt-brand-label" style={{ paddingLeft: 11 }}>{getSailBrand(group.name)}</span>
                 </td>
-                <td className="ppt-td ppt-price-sail">
-                  {sail.gasoline > 0 ? sail.gasoline.toLocaleString() : <span style={{color:"#d1d5db"}}>—</span>}
-                  <RegionRankBadge rank={sail.gasRank} total={sail.gasTotal} />
-                </td>
+                <td className="ppt-td ppt-price-sail">{sail.gasoline > 0 ? sail.gasoline.toLocaleString() : <span style={{color:"#d1d5db"}}>—</span>}</td>
                 <td className="ppt-td ppt-diff-cell"><span style={{ color: "#d1d5db" }}>—</span></td>
                 <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={pgDiff} mode="prev" /></td>
-                <td className="ppt-td ppt-price-sail">
-                  {sail.diesel > 0 ? sail.diesel.toLocaleString() : <span style={{color:"#d1d5db"}}>—</span>}
-                  <RegionRankBadge rank={sail.dslRank} total={sail.dslTotal} />
-                </td>
+                <td className="ppt-td ppt-price-sail">{sail.diesel > 0 ? sail.diesel.toLocaleString() : <span style={{color:"#d1d5db"}}>—</span>}</td>
                 <td className="ppt-td ppt-diff-cell"><span style={{ color: "#d1d5db" }}>—</span></td>
                 <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={pdDiff} mode="prev" /></td>
               </tr>
@@ -616,61 +598,6 @@ function PasswordGate({ children }) {
   );
 }
 
-/* ─── 지역 가격 순위 조회 (비싼 순위 기준) ─── */
-const fetchCityRankings = async (groupDefs) => {
-  // sigunguCode 기준으로 중복 제거(같은 도시 → 한 번만 호출)
-  const sigunguMap = {}; // sigunguCode → { sido, groups: [{groupName, sailId}] }
-  groupDefs.forEach(g => {
-    if (!g.sigunguCode || !g.regionCode) return;
-    const key = g.sigunguCode;
-    if (!sigunguMap[key]) sigunguMap[key] = { sido: g.regionCode, groups: [] };
-    sigunguMap[key].groups.push({ groupName: g.name, sailId: g.sail.id });
-  });
-
-  const rankingData = {};
-
-  await Promise.all(
-    Object.entries(sigunguMap).map(async ([sigunguCd, { sido, groups }]) => {
-      await Promise.all([
-        // 휘발유 순위
-        fetch(`${API_PROXY}?endpoint=getLowPriceStation.do&cnt=999&prodcd=B027&sido=${sido}&sigungu=${sigunguCd}`)
-          .then(r => r.json())
-          .then(json => {
-            const list = Array.isArray(json.RESULT?.OIL) ? json.RESULT.OIL : [];
-            const total = list.length;
-            groups.forEach(({ groupName, sailId }) => {
-              const idx = list.findIndex(s => s.UNI_ID === sailId);
-              if (!rankingData[groupName]) rankingData[groupName] = {};
-              if (idx !== -1) {
-                rankingData[groupName].gasRank = total - idx; // 1=가장비쌈, total=가장저렴
-                rankingData[groupName].gasTotal = total;
-              }
-            });
-          })
-          .catch(e => console.warn('Gas ranking fetch failed:', e)),
-        // 경유 순위
-        fetch(`${API_PROXY}?endpoint=getLowPriceStation.do&cnt=999&prodcd=D047&sido=${sido}&sigungu=${sigunguCd}`)
-          .then(r => r.json())
-          .then(json => {
-            const list = Array.isArray(json.RESULT?.OIL) ? json.RESULT.OIL : [];
-            const total = list.length;
-            groups.forEach(({ groupName, sailId }) => {
-              const idx = list.findIndex(s => s.UNI_ID === sailId);
-              if (!rankingData[groupName]) rankingData[groupName] = {};
-              if (idx !== -1) {
-                rankingData[groupName].dslRank = total - idx;
-                rankingData[groupName].dslTotal = total;
-              }
-            });
-          })
-          .catch(e => console.warn('Diesel ranking fetch failed:', e)),
-      ]);
-    })
-  );
-
-  return rankingData;
-};
-
 /* ─── Main Dashboard ─── */
 export default function SailDashboard() {
   const [data, setData] = useState(makeEmptyData);  // 초기에는 빈 상태 (가격 0)
@@ -751,18 +678,8 @@ export default function SailDashboard() {
         // 전일 데이터 불러와 전일대비 계산
         const prevData = loadPrevDayData();
         if (prevData) setPrevDateLabel(prevData.date);
-
-        // 지역 가격 순위 조회 (best-effort, 실패해도 무시)
-        let rankingData = {};
-        try { rankingData = await fetchCityRankings(ALL_GROUPS); }
-        catch (e) { console.warn('City rankings overall failed:', e); }
-        const applyRankings = (groupRows) => groupRows.map(group => {
-          const r = rankingData[group.name];
-          return r ? { ...group, sail: { ...group.sail, ...r } } : group;
-        });
-
-        const groupsWithDiff = applyRankings(applyPrevDiffs(validGroups || groups, prevData));
-        const chainGroupsWithDiff = applyRankings(applyPrevDiffs(validChainGroups || chainGroups, prevData));
+        const groupsWithDiff = applyPrevDiffs(validGroups || groups, prevData);
+        const chainGroupsWithDiff = applyPrevDiffs(validChainGroups || chainGroups, prevData);
 
         setData(prev => ({ ...prev, date: today, nationalAvg, groups: groupsWithDiff, chainGroups: chainGroupsWithDiff }));
         setLastFetchTime(getKSTDateTimeStr());
