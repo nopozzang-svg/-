@@ -177,6 +177,27 @@ const CHAIN_GROUPS = [
 
 const ALL_GROUPS = [...STATION_GROUPS, ...CHAIN_GROUPS];
 
+/* 등유 대상 지점 (안양, 일품) */
+const KEROSENE_GROUPS = [
+  {
+    name: "안양", region: "경기도 안양시",
+    sail: { id: "A0000180", name: "안양주유소", brand: "S-OIL" },
+    competitors: [
+      { id: "A0001856", name: "청기와",   brand: "HD현대오일" },
+      { id: "A0001905", name: "안양알찬", brand: "S-OIL" },
+    ],
+  },
+  {
+    name: "일품", region: "경기도 고양시",
+    sail: { id: "A0005430", name: "통일로일품주유소", brand: "S-OIL" },
+    competitors: [
+      { id: "A0005555", name: "원흥고양", brand: "HD현대오일" },
+      { id: "A0005565", name: "우주",     brand: "S-OIL" },
+      { id: "A0005163", name: "너명골",   brand: "S-OIL" },
+    ],
+  },
+];
+
 /* 정유사 브랜드 조회 헬퍼 — 직영 + 계열 통합 탐색 */
 const getSailBrand = (groupName) =>
   ALL_GROUPS.find(g => g.name === groupName)?.sail.brand ?? "";
@@ -403,6 +424,104 @@ const PostedPriceTable = ({ data, groups: groupsProp, prevDate, title }) => {
   );
 };
 
+/* ─── 등유 게시가 현황 테이블 ─── */
+const KerosenePriceTable = ({ groups, date, prevDate }) => (
+  <div className="ppt-wrap">
+    <div className="ppt-head">
+      <span className="ppt-title">등유 게시가 현황</span>
+      <div style={{ textAlign: "right" }}>
+        <div className="ppt-date">{date}</div>
+        {prevDate
+          ? <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>전일기준: {prevDate}</div>
+          : <div style={{ fontSize: 10, color: "#d1d5db", marginTop: 2 }}>전일 데이터 없음</div>
+        }
+      </div>
+    </div>
+    <div className="ppt-scroll">
+      <table className="ppt-table">
+        <colgroup>
+          <col style={{ width: "34%" }} />
+          <col style={{ width: "22%" }} />
+          <col style={{ width: "22%" }} />
+          <col style={{ width: "22%" }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th rowSpan="2" className="ppt-th ppt-th-cat">구분</th>
+            <th colSpan="3" className="ppt-th ppt-th-die">등유</th>
+          </tr>
+          <tr>
+            <th className="ppt-th ppt-th-sub">게시가</th>
+            <th className="ppt-th ppt-th-sub">당사대비</th>
+            <th className="ppt-th ppt-th-sub">전일대비</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.flatMap((group, gi) => {
+            const sail = group.sail;
+            const rows = [];
+            rows.push(
+              <tr key={`s-${gi}`} className="ppt-row-sail">
+                <td className="ppt-td ppt-name-sail">
+                  <div className="ppt-name-sail-row">
+                    <span className="ppt-sail-dot" />
+                    <span className="ppt-name-sail-text">{sail.name}</span>
+                  </div>
+                  <span className="ppt-brand-label" style={{ paddingLeft: 11 }}>{sail.brand}</span>
+                </td>
+                <td className="ppt-td ppt-price-sail">{sail.kerosene > 0 ? sail.kerosene.toLocaleString() : <span style={{color:"#d1d5db"}}>—</span>}</td>
+                <td className="ppt-td ppt-diff-cell"><span style={{ color: "#d1d5db" }}>—</span></td>
+                <td className="ppt-td ppt-diff-cell"><span style={{ color: "#d1d5db" }}>—</span></td>
+              </tr>
+            );
+            group.competitors.forEach((comp, ci) => {
+              const kd = comp.kerosene - sail.kerosene;
+              const isLast = ci === group.competitors.length - 1;
+              rows.push(
+                <tr key={`c-${gi}-${ci}`} className={`ppt-row-comp${isLast ? " ppt-row-last" : ""}`}>
+                  <td className="ppt-td ppt-name-comp">
+                    <div className="ppt-name-comp-text">{comp.name}</div>
+                    <div className="ppt-brand-label">{comp.brand}</div>
+                  </td>
+                  <td className="ppt-td ppt-price-comp">{comp.kerosene > 0 ? comp.kerosene.toLocaleString() : <span style={{color:"#d1d5db"}}>—</span>}</td>
+                  <td className="ppt-td ppt-diff-cell"><TablePriceDiff diff={comp.kerosene > 0 && sail.kerosene > 0 ? (kd !== 0 ? kd : null) : null} mode="vs_sail" /></td>
+                  <td className="ppt-td ppt-diff-cell"><span style={{ color: "#d1d5db" }}>—</span></td>
+                </tr>
+              );
+            });
+            if (group.regionAvg > 0) {
+              rows.push(
+                <tr key={`r-${gi}`} style={{ background: "#f8fafc" }}>
+                  <td className="ppt-td" style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 8, paddingBottom: 8 }}>
+                    <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600, letterSpacing: "0.02em" }}>
+                      📍 {group.region} 등유 평균
+                    </div>
+                    <div style={{ fontSize: 9, color: "#c4c9d0", marginTop: 1 }}>경기도 기준</div>
+                  </td>
+                  <td className="ppt-td" style={{ borderTop: "1px dashed #e5e7eb", fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: "#6b7280", fontWeight: 600 }}>
+                    {group.regionAvg.toLocaleString()}
+                  </td>
+                  <td className="ppt-td ppt-diff-cell" style={{ borderTop: "1px dashed #e5e7eb" }}>
+                    <TablePriceDiff diff={sail.kerosene > 0 ? sail.kerosene - group.regionAvg : null} mode="vs_sail" />
+                  </td>
+                  <td className="ppt-td ppt-diff-cell" style={{ borderTop: "1px dashed #e5e7eb" }}>
+                    <span style={{ color: "#d1d5db" }}>—</span>
+                  </td>
+                </tr>
+              );
+            }
+            return rows;
+          })}
+        </tbody>
+      </table>
+    </div>
+    <div className="ppt-legend">
+      <span className="ppt-legend-item"><span style={{ color: "#16a34a", fontWeight: 700 }}>▲</span> 경쟁사 높음 (당사 유리)</span>
+      <span className="ppt-legend-item"><span style={{ color: "#ef4444", fontWeight: 700 }}>▼</span> 경쟁사 낮음 (당사 불리)</span>
+    </div>
+  </div>
+);
+
 /* ─── StatCard ─── */
 const StatCard = ({ label, value, sub, accent }) => (
   <div className="stat-card">
@@ -607,6 +726,15 @@ export default function SailDashboard() {
   const [activeView, setActiveView] = useState("overview");
   const [prevDateLabel, setPrevDateLabel] = useState(null);
   const [lastFetchTime, setLastFetchTime] = useState(null);
+  const [keroGroups, setKeroGroups] = useState(() =>
+    KEROSENE_GROUPS.map(g => ({
+      name: g.name,
+      region: g.region,
+      sail: { name: g.sail.name, brand: g.sail.brand, kerosene: 0 },
+      competitors: g.competitors.map(c => ({ name: c.name, brand: c.brand, kerosene: 0 })),
+      regionAvg: 0,
+    }))
+  );
 
   // 앱 최초 로드 시:
   // 1) 어제 날짜로 SAMPLE_DATA baseline 시드 → 전일대비 기준 확보
@@ -622,7 +750,7 @@ export default function SailDashboard() {
     fetchLiveData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fuelLabel = fuelType === "gasoline" ? "휘발유" : "경유";
+  const fuelLabel = fuelType === "gasoline" ? "휘발유" : fuelType === "diesel" ? "경유" : "등유";
 
   const fetchLiveData = async () => {
     setLoading(true);
@@ -642,6 +770,7 @@ export default function SailDashboard() {
             oilPrices.forEach(p => {
               if (p.PRODCD === "B027") prices.gasoline = parseFloat(p.PRICE);
               if (p.PRODCD === "D047") prices.diesel = parseFloat(p.PRICE);
+              if (p.PRODCD === "C004") prices.kerosene = parseFloat(p.PRICE);
             });
             results[id] = { name: oil.OS_NM, ...prices };
           }
@@ -684,6 +813,25 @@ export default function SailDashboard() {
         setData(prev => ({ ...prev, date: today, nationalAvg, groups: groupsWithDiff, chainGroups: chainGroupsWithDiff }));
         setLastFetchTime(getKSTDateTimeStr());
         setApiStatus("live");
+
+        // 경기도 등유 지역 평균 조회 (sido=02)
+        let gyeonggiKeroAvg = 0;
+        try {
+          const keroAvgRes = await fetch(`${API_PROXY}?endpoint=avgSidoPrice.do&sido=02`);
+          const keroAvgJson = await keroAvgRes.json();
+          if (keroAvgJson.RESULT?.OIL) {
+            const oils = Array.isArray(keroAvgJson.RESULT.OIL) ? keroAvgJson.RESULT.OIL : [keroAvgJson.RESULT.OIL];
+            oils.forEach(o => { if (o.PRODCD === "C004") gyeonggiKeroAvg = parseFloat(o.PRICE); });
+          }
+        } catch (e) { console.warn("Failed gyeonggi kero avg:", e); }
+
+        setKeroGroups(KEROSENE_GROUPS.map(g => ({
+          name: g.name,
+          region: g.region,
+          sail: { name: g.sail.name, brand: g.sail.brand, kerosene: results[g.sail.id]?.kerosene || 0 },
+          competitors: g.competitors.map(c => ({ name: c.name, brand: c.brand, kerosene: results[c.id]?.kerosene || 0 })),
+          regionAvg: gyeonggiKeroAvg,
+        })));
       } else {
         // API 호출은 성공했지만 가격 데이터가 없는 경우
         setData(prev => ({ ...prev, date: today, nationalAvg }));
@@ -748,21 +896,23 @@ export default function SailDashboard() {
         <SailLogo />
         <div className="dash-header-right">
           <div className="toggle-group">
-            {[{ key: "gasoline", label: "휘발유" }, { key: "diesel", label: "경유" }].map(f => (
+            {[{ key: "gasoline", label: "휘발유" }, { key: "diesel", label: "경유" }, { key: "kerosene", label: "등유" }].map(f => (
               <button key={f.key} onClick={() => setFuelType(f.key)} className="toggle-btn" style={{
-                background: fuelType === f.key ? "rgba(37,99,235,0.1)" : "transparent",
-                color: fuelType === f.key ? "#2563eb" : "#6b7280",
+                background: fuelType === f.key ? (f.key === "kerosene" ? "rgba(234,88,12,0.1)" : "rgba(37,99,235,0.1)") : "transparent",
+                color: fuelType === f.key ? (f.key === "kerosene" ? "#ea580c" : "#2563eb") : "#6b7280",
               }}>{f.label}</button>
             ))}
           </div>
-          <div className="toggle-group">
-            {[{ key: "overview", label: "종합" }, { key: "detail", label: "상세" }, { key: "trend", label: "추세" }, { key: "chain", label: "계열" }].map(v => (
-              <button key={v.key} onClick={() => setActiveView(v.key)} className="toggle-btn" style={{
-                background: activeView === v.key ? "rgba(0,0,0,0.08)" : "transparent",
-                color: activeView === v.key ? "#111827" : "#6b7280",
-              }}>{v.label}</button>
-            ))}
-          </div>
+          {fuelType !== "kerosene" && (
+            <div className="toggle-group">
+              {[{ key: "overview", label: "종합" }, { key: "detail", label: "상세" }, { key: "trend", label: "추세" }, { key: "chain", label: "계열" }].map(v => (
+                <button key={v.key} onClick={() => setActiveView(v.key)} className="toggle-btn" style={{
+                  background: activeView === v.key ? "rgba(0,0,0,0.08)" : "transparent",
+                  color: activeView === v.key ? "#111827" : "#6b7280",
+                }}>{v.label}</button>
+              ))}
+            </div>
+          )}
           <div className="status-bar">
             <div className="status-dot" style={{ background: statusColor, boxShadow: `0 0 5px ${statusColor}88` }} />
             <span className="status-label">{statusText}</span>
@@ -776,26 +926,69 @@ export default function SailDashboard() {
       {/* ── Main ── */}
       <main className="dash-main">
 
-        {/* Summary Cards */}
-        <div className="summary-grid">
-          <StatCard label={`세일 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.sailAvg} sub="원/리터" accent="#2563eb" />
-          <StatCard label={`경쟁사 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.compAvg} sub="원/리터" accent="#374151" />
-          <StatCard
-            label="평균 가격차"
-            value={apiStatus === "loading" ? "—" : `${summary.overallDiff > 0 ? "+" : ""}${summary.overallDiff}`}
-            sub={apiStatus === "loading" ? "" : (summary.overallDiff > 0 ? "경쟁사보다 높음" : "경쟁사보다 낮음")}
-            accent={summary.overallDiff > 0 ? "#ef4444" : "#16a34a"}
-          />
-          <StatCard
-            label="전국 평균 이하"
-            value={apiStatus === "loading" ? "—" : `${summary.belowAvgCount}/${summary.totalGroups}`}
-            sub={apiStatus === "loading" ? "" : `전국 평균 ${data.nationalAvg[fuelType].toLocaleString()}원`}
-            accent="#f59e0b"
-          />
-        </div>
+        {/* Summary Cards — 등유 탭에서는 숨김 */}
+        {fuelType !== "kerosene" && (
+          <div className="summary-grid">
+            <StatCard label={`세일 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.sailAvg} sub="원/리터" accent="#2563eb" />
+            <StatCard label={`경쟁사 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.compAvg} sub="원/리터" accent="#374151" />
+            <StatCard
+              label="평균 가격차"
+              value={apiStatus === "loading" ? "—" : `${summary.overallDiff > 0 ? "+" : ""}${summary.overallDiff}`}
+              sub={apiStatus === "loading" ? "" : (summary.overallDiff > 0 ? "경쟁사보다 높음" : "경쟁사보다 낮음")}
+              accent={summary.overallDiff > 0 ? "#ef4444" : "#16a34a"}
+            />
+            <StatCard
+              label="전국 평균 이하"
+              value={apiStatus === "loading" ? "—" : `${summary.belowAvgCount}/${summary.totalGroups}`}
+              sub={apiStatus === "loading" ? "" : `전국 평균 ${data.nationalAvg[fuelType].toLocaleString()}원`}
+              accent="#f59e0b"
+            />
+          </div>
+        )}
+
+        {/* ── KEROSENE (등유) ── */}
+        {fuelType === "kerosene" && (
+          <>
+            {/* 지역 등유 평균가 카드 */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+              {keroGroups.map((g, i) => {
+                const diff = g.sail.kerosene > 0 && g.regionAvg > 0 ? g.sail.kerosene - g.regionAvg : null;
+                return (
+                  <div key={i} style={{ background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                    <div style={{ fontSize: 11, color: "#ea580c", fontWeight: 700, letterSpacing: "0.04em", marginBottom: 4 }}>
+                      📍 {g.region} 등유 평균가
+                    </div>
+                    <div style={{ fontSize: 9, color: "#9ca3af", marginBottom: 10 }}>경기도 기준 · 오피넷 제공</div>
+                    <div style={{ fontSize: 30, fontWeight: 800, color: "#374151", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>
+                      {g.regionAvg > 0 ? g.regionAvg.toLocaleString() : "—"}
+                      <span style={{ fontSize: 14, fontWeight: 400, color: "#9ca3af", marginLeft: 5 }}>원/ℓ</span>
+                    </div>
+                    {g.sail.kerosene > 0 && g.regionAvg > 0 && (
+                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div>
+                          <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 2 }}>당사 ({g.sail.name})</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: "#111827", fontFamily: "'JetBrains Mono', monospace" }}>
+                            {g.sail.kerosene.toLocaleString()}원
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 2 }}>지역 평균 대비</div>
+                          <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: diff <= 0 ? "#16a34a" : "#ef4444" }}>
+                            {diff <= 0 ? "▼" : "▲"}{Math.abs(diff)}원
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <KerosenePriceTable groups={keroGroups} date={data.date} prevDate={prevDateLabel} />
+          </>
+        )}
 
         {/* ── OVERVIEW ── */}
-        {activeView === "overview" && (
+        {fuelType !== "kerosene" && activeView === "overview" && (
           <>
             <PostedPriceTable data={data} prevDate={prevDateLabel} />
 
@@ -866,14 +1059,14 @@ export default function SailDashboard() {
         )}
 
         {/* ── DETAIL ── */}
-        {activeView === "detail" && (
+        {fuelType !== "kerosene" && activeView === "detail" && (
           <div className="detail-grid">
             {data.groups.map((g, i) => <GroupCard key={i} group={g} fuelType={fuelType} />)}
           </div>
         )}
 
         {/* ── TREND ── */}
-        {activeView === "trend" && (
+        {fuelType !== "kerosene" && activeView === "trend" && (
           <div className="dash-panel">
             <h2 className="panel-title" style={{ marginBottom: 20 }}>최근 7일 가격 추세 · {fuelLabel}</h2>
             <ResponsiveContainer width="100%" height={300}>
@@ -904,7 +1097,7 @@ export default function SailDashboard() {
         )}
 
         {/* ── CHAIN (계열) ── */}
-        {activeView === "chain" && (
+        {fuelType !== "kerosene" && activeView === "chain" && (
           <PostedPriceTable
             data={data}
             groups={data.chainGroups}
