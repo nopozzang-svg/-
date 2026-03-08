@@ -191,8 +191,12 @@ const KEROSENE_GROUPS = [
     name: "일품", region: "경기도 고양시",
     sail: { id: "A0005430", name: "통일로일품주유소", brand: "S-OIL" },
     competitors: [
-      { id: "A0005565", name: "우주",   brand: "S-OIL" },
-      { id: "A0005163", name: "너명골", brand: "S-OIL" },
+      { id: "A0005565", name: "우주",       brand: "S-OIL" },
+      { id: "A0005163", name: "너명골",     brand: "S-OIL" },
+      { id: "A0005162", name: "한솔",       brand: "GS칼텍스" },
+      { id: "A0000730", name: "원흥제2",    brand: "HD현대오일뱅크" },
+      { id: "A0005121", name: "내유동",     brand: "S-OIL" },
+      { id: "A0000154", name: "하늘",       brand: "S-OIL" },
     ],
   },
 ];
