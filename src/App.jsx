@@ -497,7 +497,7 @@ const KerosenePriceTable = ({ groups, date, prevDate }) => (
                     </div>
                     <div style={{ fontSize: 9, color: "#c4c9d0", marginTop: 1 }}>경기도 기준</div>
                   </td>
-                  <td className="ppt-td" style={{ borderTop: "1px dashed #e5e7eb", fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: "#6b7280", fontWeight: 600 }}>
+                  <td className="ppt-td ppt-price-comp" style={{ borderTop: "1px dashed #e5e7eb", fontSize: 13, color: "#6b7280", fontWeight: 600 }}>
                     {group.regionAvg.toLocaleString()}
                   </td>
                   <td className="ppt-td ppt-diff-cell" style={{ borderTop: "1px dashed #e5e7eb" }}>
