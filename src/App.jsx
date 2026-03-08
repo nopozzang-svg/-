@@ -759,7 +759,10 @@ export default function SailDashboard() {
     setLoading(true);
     setApiStatus("loading");
     try {
-      const stationIds = ALL_GROUPS.flatMap(g => [g.sail.id, ...g.competitors.map(c => c.id)]);
+      const stationIds = [
+        ...ALL_GROUPS.flatMap(g => [g.sail.id, ...g.competitors.map(c => c.id)]),
+        ...KEROSENE_GROUPS.flatMap(g => [g.sail.id, ...g.competitors.map(c => c.id)]),
+      ];
       const uniqueIds = [...new Set(stationIds)];
       const results = {};
       for (const id of uniqueIds) {
