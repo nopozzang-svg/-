@@ -191,9 +191,8 @@ const KEROSENE_GROUPS = [
     name: "일품", region: "경기도 고양시",
     sail: { id: "A0005430", name: "통일로일품주유소", brand: "S-OIL" },
     competitors: [
-      { id: "A0005555", name: "원흥고양", brand: "HD현대오일" },
-      { id: "A0005565", name: "우주",     brand: "S-OIL" },
-      { id: "A0005163", name: "너명골",   brand: "S-OIL" },
+      { id: "A0005565", name: "우주",   brand: "S-OIL" },
+      { id: "A0005163", name: "너명골", brand: "S-OIL" },
     ],
   },
 ];
@@ -821,15 +820,15 @@ export default function SailDashboard() {
           const keroAvgJson = await keroAvgRes.json();
           if (keroAvgJson.RESULT?.OIL) {
             const oils = Array.isArray(keroAvgJson.RESULT.OIL) ? keroAvgJson.RESULT.OIL : [keroAvgJson.RESULT.OIL];
-            oils.forEach(o => { if (o.PRODCD === "C004") gyeonggiKeroAvg = parseFloat(o.PRICE); });
+            oils.forEach(o => { if (o.PRODCD === "C004") gyeonggiKeroAvg = Math.round(parseFloat(o.PRICE)); });
           }
         } catch (e) { console.warn("Failed gyeonggi kero avg:", e); }
 
         setKeroGroups(KEROSENE_GROUPS.map(g => ({
           name: g.name,
           region: g.region,
-          sail: { name: g.sail.name, brand: g.sail.brand, kerosene: results[g.sail.id]?.kerosene || 0 },
-          competitors: g.competitors.map(c => ({ name: c.name, brand: c.brand, kerosene: results[c.id]?.kerosene || 0 })),
+          sail: { name: g.sail.name, brand: g.sail.brand, kerosene: Math.round(results[g.sail.id]?.kerosene || 0) },
+          competitors: g.competitors.map(c => ({ name: c.name, brand: c.brand, kerosene: Math.round(results[c.id]?.kerosene || 0) })),
           regionAvg: gyeonggiKeroAvg,
         })));
       } else {
@@ -949,38 +948,29 @@ export default function SailDashboard() {
         {/* ── KEROSENE (등유) ── */}
         {fuelType === "kerosene" && (
           <>
-            {/* 지역 등유 평균가 카드 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            {/* 2x2 카드: 각 지점 게시가 + 지역 평균가 */}
+            <div className="summary-grid">
               {keroGroups.map((g, i) => {
                 const diff = g.sail.kerosene > 0 && g.regionAvg > 0 ? g.sail.kerosene - g.regionAvg : null;
-                return (
-                  <div key={i} style={{ background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-                    <div style={{ fontSize: 11, color: "#ea580c", fontWeight: 700, letterSpacing: "0.04em", marginBottom: 4 }}>
-                      📍 {g.region} 등유 평균가
-                    </div>
-                    <div style={{ fontSize: 9, color: "#9ca3af", marginBottom: 10 }}>경기도 기준 · 오피넷 제공</div>
-                    <div style={{ fontSize: 30, fontWeight: 800, color: "#374151", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>
-                      {g.regionAvg > 0 ? g.regionAvg.toLocaleString() : "—"}
-                      <span style={{ fontSize: 14, fontWeight: 400, color: "#9ca3af", marginLeft: 5 }}>원/ℓ</span>
-                    </div>
-                    {g.sail.kerosene > 0 && g.regionAvg > 0 && (
-                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div>
-                          <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 2 }}>당사 ({g.sail.name})</div>
-                          <div style={{ fontSize: 16, fontWeight: 700, color: "#111827", fontFamily: "'JetBrains Mono', monospace" }}>
-                            {g.sail.kerosene.toLocaleString()}원
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 2 }}>지역 평균 대비</div>
-                          <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: diff <= 0 ? "#16a34a" : "#ef4444" }}>
-                            {diff <= 0 ? "▼" : "▲"}{Math.abs(diff)}원
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
+                const regionLabel = i === 0 ? "안양 지역 등유 평균" : "고양시 등유 평균";
+                return [
+                  /* 게시가 카드 */
+                  <StatCard
+                    key={`price-${i}`}
+                    label={`${g.sail.name} 게시가`}
+                    value={g.sail.kerosene > 0 ? g.sail.kerosene : "—"}
+                    sub={diff !== null ? `지역평균 대비 ${diff <= 0 ? "▼" : "▲"}${Math.abs(diff)}원` : "원/리터"}
+                    accent="#ea580c"
+                  />,
+                  /* 지역 평균가 카드 */
+                  <StatCard
+                    key={`avg-${i}`}
+                    label={regionLabel}
+                    value={g.regionAvg > 0 ? g.regionAvg : "—"}
+                    sub="경기도 기준 · 오피넷"
+                    accent="#374151"
+                  />,
+                ];
               })}
             </div>
             <KerosenePriceTable groups={keroGroups} date={data.date} prevDate={prevDateLabel} />
