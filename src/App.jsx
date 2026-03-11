@@ -34,11 +34,15 @@ const getKSTDateTimeStr = () => {
   return kst.toISOString().replace("T", " ").substring(0, 16);
 };
 
-/** 오늘 날짜 기준으로 가격 데이터를 localStorage에 저장 */
+/** 실제 API 데이터를 localStorage에 저장 — _live:true 마커로 가짜 데이터와 구분 */
 const savePricesToLocal = (date, groups) => {
   try {
+    // 유효한 가격이 하나도 없으면 저장하지 않음 (API 오류 방어)
+    const hasValidPrice = groups.some(g => g.sail.gasoline > 0 || g.sail.diesel > 0);
+    if (!hasValidPrice) return;
+
     const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-    const snapshot = {};
+    const snapshot = { _live: true }; // 실제 API 데이터임을 표시
     groups.forEach(g => {
       snapshot[g.name] = {
         sg: g.sail.gasoline,   // sail gasoline
@@ -56,16 +60,33 @@ const savePricesToLocal = (date, groups) => {
   } catch (_) { /* localStorage 사용 불가 환경 대응 */ }
 };
 
-/** 전일 데이터를 가져옴 — 어제 날짜를 우선 탐색, 없으면 가장 최근 과거 날짜 */
+/** 기존 localStorage에서 _live 마커 없는 오염된 데이터 제거 */
+const cleanCorruptedHistory = () => {
+  try {
+    const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    let changed = false;
+    Object.keys(history).forEach(date => {
+      if (!history[date]?._live) {
+        delete history[date];
+        changed = true;
+      }
+    });
+    if (changed) localStorage.setItem(STORE_KEY, JSON.stringify(history));
+  } catch (_) {}
+};
+
+/** 전일 데이터를 가져옴 — _live:true 인 항목만 사용, 어제 우선 탐색 후 최근 날짜 fallback */
 const loadPrevDayData = () => {
   try {
     const today = getKSTDateStr();
     const yesterday = getKSTYesterdayStr();
     const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-    // 어제 데이터가 있으면 우선 사용
-    if (history[yesterday]) return { date: yesterday, snapshot: history[yesterday] };
-    // 없으면 오늘 이전 가장 최근 날짜 fallback
-    const prevDates = Object.keys(history).filter(d => d < today).sort().reverse();
+    // _live 마커가 있는 어제 데이터 우선 사용
+    if (history[yesterday]?._live) return { date: yesterday, snapshot: history[yesterday] };
+    // 없으면 오늘 이전 _live 데이터 중 가장 최근 날짜 fallback
+    const prevDates = Object.keys(history)
+      .filter(d => d < today && history[d]?._live)
+      .sort().reverse();
     if (!prevDates.length) return null;
     return { date: prevDates[0], snapshot: history[prevDates[0]] };
   } catch (_) { return null; }
@@ -740,16 +761,10 @@ export default function SailDashboard() {
   );
 
   // 앱 최초 로드 시:
-  // 1) 어제 날짜로 SAMPLE_DATA baseline 시드 → 전일대비 기준 확보
-  // 2) 실시간 API 자동 호출 (가격은 API 응답 후에만 표시)
+  // 1) 기존 오염된(가짜) localStorage 데이터 정리
+  // 2) 실시간 API 자동 호출 (전일 실데이터 없으면 전일대비 "—" 표시)
   useEffect(() => {
-    const yesterday = getKSTYesterdayStr();
-    try {
-      const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
-      if (!history[yesterday]) {
-        savePricesToLocal(yesterday, SAMPLE_DATA.groups);
-      }
-    } catch (_) {}
+    cleanCorruptedHistory();
     fetchLiveData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
