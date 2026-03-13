@@ -1,7 +1,7 @@
 // Vercel Serverless Function — Opinet API 프록시
 // 브라우저 CORS 우회: 클라이언트 → /api/opinet → (서버) → opinet.co.kr
 export default async function handler(req, res) {
-  const API_KEY = "F260305293";
+  const API_KEY = "F250430333";
   const OPINET_BASE = "https://www.opinet.co.kr/api";
 
   const { endpoint, ...rest } = req.query;
