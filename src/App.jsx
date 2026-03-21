@@ -8,6 +8,10 @@ import "./App.css";
 // API 호출은 /api/opinet 서버리스 프록시를 통해 CORS 우회
 const API_PROXY = "/api/opinet";
 
+// ─── Supabase 설정 ───
+const SUPABASE_URL = "https://ozxjyzhndrgyvtewlkac.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im96eGp5emhuZHJneXZ0ZXdsa2FjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5OTgyNjcsImV4cCI6MjA4NzU3NDI2N30.ESPSK3MZeXMf5gK6ajT0eeNedqxiuniS3zRFbuyzPu4";
+
 /* ══════════════════════════════════════
    국제 지표 히스토리 localStorage 관리
    - 키: "sail_intl_history"
@@ -104,6 +108,55 @@ const getPrevMonthAvg = (field) => {
   if (month === 0) { month = 12; year--; } // 1월이면 작년 12월
   const key = `${year}-${String(month).padStart(2, "0")}`;
   return INTL_PREV_MONTH_DATA[key]?.[field] ?? null;
+};
+
+/** Supabase에서 전일 주유소 스냅샷 + 당월 국제지표를 가져와 localStorage에 병합
+ *  → 어느 기기에서 접속해도 전일대비·당월평균이 동일하게 표시됨 */
+const loadFromSupabase = async () => {
+  try {
+    const yesterday   = getKSTYesterdayStr();
+    const nowKST      = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const monthStart  = `${nowKST.getUTCFullYear()}-${String(nowKST.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    const supaHeaders = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
+
+    const [snapRes, intlRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/station_snapshots?date=eq.${yesterday}&select=snapshot`, { headers: supaHeaders }),
+      fetch(`${SUPABASE_URL}/rest/v1/intl_snapshots?date=gte.${monthStart}&select=date,wti,dubai,mops_gas,mops_diesel,mops_kero,exch`, { headers: supaHeaders }),
+    ]);
+
+    // 전일 주유소 스냅샷 → localStorage
+    if (snapRes.ok) {
+      const rows = await snapRes.json();
+      if (rows.length > 0 && rows[0].snapshot) {
+        const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+        // 로컬에 어제 데이터가 없거나 비실시간(_live 없음)인 경우만 덮어쓰기
+        if (!history[yesterday]?._live) {
+          history[yesterday] = rows[0].snapshot;
+          localStorage.setItem(STORE_KEY, JSON.stringify(history));
+        }
+      }
+    }
+
+    // 당월 국제지표 → localStorage
+    if (intlRes.ok) {
+      const rows = await intlRes.json();
+      if (rows.length > 0) {
+        const stored = JSON.parse(localStorage.getItem(INTL_HISTORY_KEY) || "{}");
+        rows.forEach(row => {
+          if (!stored[row.date]) stored[row.date] = {};
+          if (row.wti        != null) stored[row.date].wti        = row.wti;
+          if (row.dubai      != null) stored[row.date].dubai      = row.dubai;
+          if (row.mops_gas   != null) stored[row.date].mopsGas    = row.mops_gas;
+          if (row.mops_diesel != null) stored[row.date].mopsDiesel = row.mops_diesel;
+          if (row.mops_kero  != null) stored[row.date].mopsKero   = row.mops_kero;
+          if (row.exch       != null) stored[row.date].exch       = row.exch;
+        });
+        localStorage.setItem(INTL_HISTORY_KEY, JSON.stringify(stored));
+      }
+    }
+  } catch (e) {
+    console.warn("Supabase sync failed:", e);
+  }
 };
 
 /* ══════════════════════════════════════
@@ -862,10 +915,12 @@ export default function SailDashboard() {
 
   // 앱 최초 로드 시:
   // 1) 기존 오염된(가짜) localStorage 데이터 정리
-  // 2) 실시간 API 자동 호출 (전일 실데이터 없으면 전일대비 "—" 표시)
+  // 2) Supabase에서 전일 스냅샷 + 당월 국제지표 동기화 (크로스 디바이스 전일비)
+  // 3) 실시간 API 자동 호출 (전일 실데이터 없으면 전일대비 "—" 표시)
   useEffect(() => {
     cleanCorruptedHistory();
-    fetchLiveData();
+    // Supabase 동기화 완료 후 라이브 데이터 fetch (전일비 정확성 보장)
+    loadFromSupabase().finally(() => fetchLiveData());
     fetchIntlData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
