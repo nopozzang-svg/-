@@ -557,6 +557,97 @@
   min-width: 70px;
 }
 
+/* ── 국제지표 월간 분석 탭 ── */
+.intl-monthly-wrap {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.intl-monthly-header {
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.intl-monthly-note {
+  font-size: 11px;
+  font-weight: 400;
+  color: #9ca3af;
+  margin-left: 8px;
+}
+
+.intl-monthly-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.imt-th {
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+  text-align: right;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  line-height: 1.5;
+}
+
+.imt-th.imt-name { text-align: left; }
+
+.imt-th.imt-accent { color: #7c3aed; }
+
+.imt-sub {
+  font-weight: 400;
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.imt-row + .imt-row td {
+  border-top: 1px solid #f3f4f6;
+}
+
+.imt-td {
+  padding: 11px 14px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.imt-name {
+  font-weight: 600;
+  color: #111827;
+  text-align: left;
+}
+
+.imt-unit {
+  font-size: 11px;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.imt-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  font-size: 14px;
+  color: #374151;
+  text-align: right;
+}
+
+.imt-projected {
+  color: #7c3aed;
+}
+
+.imt-today {
+  color: #111827;
+  font-weight: 700;
+}
+
 /* ── Summary Cards ── */
 .summary-grid {
   display: grid;

@@ -1,4 +1,5 @@
 // Vercel Serverless Function — KMBCO 원/달러 환율 스크래퍼
+// history 포함 (당월 평균 계산용)
 export default async function handler(req, res) {
   try {
     const response = await fetch("https://www.kmbco.com/kor/rate/exchange_rate.do", {
@@ -16,22 +17,38 @@ export default async function handler(req, res) {
 
     const html = await response.text();
 
-    // var data1 = { ... } 에서 '환율' 라인 시리즈 추출
-    const rateMatch = html.match(/name\s*:\s*['"]환율['"]\s*,\s*data\s*:\s*\[([^\]]+)\]/);
+    // categories: ['26/02/20', ...] 추출
     const catMatch  = html.match(/categories\s*:\s*\[([^\]]+)\]/);
+    // '환율' 라인 시리즈 추출
+    const rateMatch = html.match(/name\s*:\s*['"]환율['"]\s*,\s*data\s*:\s*\[([^\]]+)\]/);
 
     if (!rateMatch) {
       return res.status(500).json({ error: "Exchange rate parse failed" });
     }
 
     const rates = rateMatch[1].split(",").map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
-    const categories = catMatch
+    const rawCats = catMatch
       ? catMatch[1].split(",").map(s => s.trim().replace(/['"]/g, ""))
       : [];
 
     if (rates.length < 2) {
       return res.status(500).json({ error: "Insufficient rate data" });
     }
+
+    // 'YY/MM/DD' → 'YYYY-MM-DD' 변환
+    const catToDate = (cat) => {
+      const parts = cat.split("/");
+      if (parts.length !== 3) return null;
+      const year = parseInt(parts[0], 10) + 2000;
+      return `${year}-${parts[1]}-${parts[2]}`;
+    };
+
+    // 날짜 → 환율 매핑 (history)
+    const history = {};
+    rawCats.forEach((cat, i) => {
+      const dateStr = catToDate(cat);
+      if (dateStr && rates[i] != null) history[dateStr] = rates[i];
+    });
 
     const current = rates[rates.length - 1];
     const prev    = rates[rates.length - 2];
@@ -42,7 +59,8 @@ export default async function handler(req, res) {
       current,
       prev,
       change: +(current - prev).toFixed(1),
-      date:   categories[categories.length - 1] ?? null,
+      date:   rawCats[rawCats.length - 1] ?? null,
+      history,
     });
   } catch (err) {
     console.error("Exchange rate error:", err);

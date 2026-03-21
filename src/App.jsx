@@ -9,6 +9,104 @@ import "./App.css";
 const API_PROXY = "/api/opinet";
 
 /* ══════════════════════════════════════
+   국제 지표 히스토리 localStorage 관리
+   - 키: "sail_intl_history"
+   - 구조: { "YYYY-MM-DD": { wti, dubai, exch, mopsGas, mopsDiesel, mopsKero } }
+══════════════════════════════════════ */
+const INTL_HISTORY_KEY = "sail_intl_history";
+
+/* 전월 평균 — 사용자 직접 제공 데이터
+   형식: { "YYYY-MM": { wti, dubai, exch, mopsGas, mopsDiesel, mopsKero } }
+   값이 없는 달은 null 로 두면 "—" 표시됨 */
+const INTL_PREV_MONTH_DATA = {
+  "2026-02": { wti: 64.52, dubai: 68.4, exch: 1449.32, mopsGas: 75.27, mopsDiesel: 89.93, mopsKero: 89.02 },
+};
+
+/** 페트로넷/KMBCO history 를 localStorage 에 병합 저장 */
+const mergeIntlHistory = (petroData, exchData) => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(INTL_HISTORY_KEY) || "{}");
+
+    // 페트로넷 history 병합
+    const fields = [
+      ["wti",          petroData?.wti?.history],
+      ["dubai",        petroData?.dubai?.history],
+      ["mopsGas",      petroData?.mopsGasoline?.history],
+      ["mopsDiesel",   petroData?.mopsDiesel?.history],
+      ["mopsKero",     petroData?.mopsKerosene?.history],
+    ];
+    fields.forEach(([key, hist]) => {
+      if (!hist) return;
+      Object.entries(hist).forEach(([date, val]) => {
+        if (!stored[date]) stored[date] = {};
+        stored[date][key] = val;
+      });
+    });
+
+    // 환율 history 병합
+    if (exchData?.history) {
+      Object.entries(exchData.history).forEach(([date, val]) => {
+        if (!stored[date]) stored[date] = {};
+        stored[date].exch = val;
+      });
+    }
+
+    localStorage.setItem(INTL_HISTORY_KEY, JSON.stringify(stored));
+  } catch (_) {}
+};
+
+/** 당월 평균(실적+예상) 계산
+ *  - 실적: history 중 당월 데이터
+ *  - 예상: 오늘 값이 남은 평일(월~금)까지 유지된다고 가정
+ */
+const calcMonthStats = (field) => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(INTL_HISTORY_KEY) || "{}");
+    const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const year   = nowKST.getUTCFullYear();
+    const month  = nowKST.getUTCMonth(); // 0-indexed
+    const today  = nowKST.getUTCDate();
+
+    // 당월 실적 데이터
+    const monthEntries = Object.entries(stored)
+      .filter(([date]) => {
+        const d = new Date(date);
+        return d.getFullYear() === year && d.getMonth() === month;
+      })
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, v]) => v[field])
+      .filter(v => v != null && !isNaN(v));
+
+    if (!monthEntries.length) return null;
+
+    const actualSum   = monthEntries.reduce((s, v) => s + v, 0);
+    const actualCount = monthEntries.length;
+    const todayVal    = monthEntries[monthEntries.length - 1];
+
+    // 말일 이후 남은 평일(월~금) 계산
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    let remaining = 0;
+    for (let d = today + 1; d <= lastDay; d++) {
+      const dow = new Date(year, month, d).getDay();
+      if (dow !== 0 && dow !== 6) remaining++;
+    }
+
+    const projected = (actualSum + todayVal * remaining) / (actualCount + remaining);
+    return { actual: actualSum / actualCount, projected, todayVal };
+  } catch (_) { return null; }
+};
+
+/** 전월 평균 반환 (INTL_PREV_MONTH_DATA 에서 조회) */
+const getPrevMonthAvg = (field) => {
+  const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  let year  = nowKST.getUTCFullYear();
+  let month = nowKST.getUTCMonth(); // 0-indexed → 1 빼면 전월
+  if (month === 0) { month = 12; year--; } // 1월이면 작년 12월
+  const key = `${year}-${String(month).padStart(2, "0")}`;
+  return INTL_PREV_MONTH_DATA[key]?.[field] ?? null;
+};
+
+/* ══════════════════════════════════════
    전일 가격 localStorage 관리
    - 키: "sail_price_history"
    - 구조: { "2026-02-25": { 지점명: { sg, sd, comp: { 경쟁사명: { g, d } } } } }
@@ -810,6 +908,7 @@ export default function SailDashboard() {
       const data  = { petro, exch };
       setIntlData(data);
       localStorage.setItem(INTL_KEY, JSON.stringify({ date: todayStr, fetchedAfter8: true, data }));
+      mergeIntlHistory(petro, exch);
     } catch (e) {
       console.warn("International data fetch failed:", e);
       // fetch 실패 시 이전 캐시라도 표시
@@ -970,14 +1069,14 @@ export default function SailDashboard() {
         <SailLogo />
         <div className="dash-header-right">
           <div className="toggle-group">
-            {[{ key: "gasoline", label: "휘발유" }, { key: "diesel", label: "경유" }, { key: "kerosene", label: "등유" }].map(f => (
+            {[{ key: "gasoline", label: "휘발유" }, { key: "diesel", label: "경유" }, { key: "kerosene", label: "등유" }, { key: "intl", label: "국제지표" }].map(f => (
               <button key={f.key} onClick={() => setFuelType(f.key)} className="toggle-btn" style={{
-                background: fuelType === f.key ? (f.key === "kerosene" ? "rgba(234,88,12,0.1)" : "rgba(37,99,235,0.1)") : "transparent",
-                color: fuelType === f.key ? (f.key === "kerosene" ? "#ea580c" : "#2563eb") : "#6b7280",
+                background: fuelType === f.key ? (f.key === "kerosene" ? "rgba(234,88,12,0.1)" : f.key === "intl" ? "rgba(124,58,237,0.1)" : "rgba(37,99,235,0.1)") : "transparent",
+                color: fuelType === f.key ? (f.key === "kerosene" ? "#ea580c" : f.key === "intl" ? "#7c3aed" : "#2563eb") : "#6b7280",
               }}>{f.label}</button>
             ))}
           </div>
-          {fuelType !== "kerosene" && (
+          {fuelType !== "kerosene" && fuelType !== "intl" && (
             <div className="toggle-group">
               {[{ key: "overview", label: "종합" }, { key: "detail", label: "상세" }, { key: "trend", label: "추세" }, { key: "chain", label: "계열" }].map(v => (
                 <button key={v.key} onClick={() => setActiveView(v.key)} className="toggle-btn" style={{
@@ -1058,8 +1157,67 @@ export default function SailDashboard() {
           </div>
         </div>
 
-        {/* Summary Cards — 등유 탭에서는 숨김 */}
-        {fuelType !== "kerosene" && (
+        {/* ── 국제지표 탭 ── */}
+        {fuelType === "intl" && (() => {
+          const nowKST  = new Date(Date.now() + 9 * 60 * 60 * 1000);
+          const year    = nowKST.getUTCFullYear();
+          const month   = nowKST.getUTCMonth();
+          const prevM   = month === 0 ? 12 : month;
+          const prevY   = month === 0 ? year - 1 : year;
+          const prevLabel = `${prevY}년 ${prevM}월`;
+          const curLabel  = `${year}년 ${month + 1}월`;
+
+          const rows = [
+            { label: "WTI",          unit: "$/bbl", field: "wti",         today: intlData?.petro?.wti?.current },
+            { label: "두바이유",      unit: "$/bbl", field: "dubai",       today: intlData?.petro?.dubai?.current },
+            { label: "원/달러",       unit: "원",    field: "exch",        today: intlData?.exch?.current },
+            { label: "무연(92RON)",   unit: "$/bbl", field: "mopsGas",     today: intlData?.petro?.mopsGasoline?.current },
+            { label: "경유(0.001%)", unit: "$/bbl", field: "mopsDiesel",  today: intlData?.petro?.mopsDiesel?.current },
+            { label: "등유",          unit: "$/bbl", field: "mopsKero",    today: intlData?.petro?.mopsKerosene?.current },
+          ];
+
+          const fmt = (v, unit) => {
+            if (v == null) return "—";
+            if (unit === "원") return v.toFixed(1);
+            return v.toFixed(2);
+          };
+
+          return (
+            <div className="intl-monthly-wrap">
+              <div className="intl-monthly-header">
+                국제 지표 월간 분석
+                <span className="intl-monthly-note">· 당월 예상은 오늘 값이 남은 평일 유지 가정</span>
+              </div>
+              <table className="intl-monthly-table">
+                <thead>
+                  <tr>
+                    <th className="imt-th imt-name"></th>
+                    <th className="imt-th">전월 평균<br/><span className="imt-sub">{prevLabel}</span></th>
+                    <th className="imt-th imt-accent">당월 평균(예상)<br/><span className="imt-sub">{curLabel}</span></th>
+                    <th className="imt-th">금일<br/><span className="imt-sub">오늘</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(({ label, unit, field, today }) => {
+                    const stats   = calcMonthStats(field);
+                    const prevAvg = getPrevMonthAvg(field);
+                    return (
+                      <tr key={field} className="imt-row">
+                        <td className="imt-td imt-name">{label}<span className="imt-unit"> {unit}</span></td>
+                        <td className="imt-td imt-val">{fmt(prevAvg, unit)}</td>
+                        <td className="imt-td imt-val imt-projected">{fmt(stats?.projected, unit)}</td>
+                        <td className="imt-td imt-val imt-today">{fmt(today, unit)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+
+        {/* Summary Cards — 등유·국제지표 탭에서는 숨김 */}
+        {fuelType !== "kerosene" && fuelType !== "intl" && (
           <div className="summary-grid">
             <StatCard label={`세일 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.sailAvg} sub="원/리터" accent="#2563eb" />
             <StatCard label={`경쟁사 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.compAvg} sub="원/리터" accent="#374151" />
