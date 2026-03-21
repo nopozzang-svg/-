@@ -1269,7 +1269,7 @@ export default function SailDashboard() {
         )}
 
         {/* ── OVERVIEW ── */}
-        {fuelType !== "kerosene" && activeView === "overview" && (
+        {fuelType !== "kerosene" && fuelType !== "intl" && activeView === "overview" && (
           <>
             <PostedPriceTable data={data} prevDate={prevDateLabel} />
 
@@ -1340,14 +1340,14 @@ export default function SailDashboard() {
         )}
 
         {/* ── DETAIL ── */}
-        {fuelType !== "kerosene" && activeView === "detail" && (
+        {fuelType !== "kerosene" && fuelType !== "intl" && activeView === "detail" && (
           <div className="detail-grid">
             {data.groups.map((g, i) => <GroupCard key={i} group={g} fuelType={fuelType} />)}
           </div>
         )}
 
         {/* ── TREND ── */}
-        {fuelType !== "kerosene" && activeView === "trend" && (
+        {fuelType !== "kerosene" && fuelType !== "intl" && activeView === "trend" && (
           <div className="dash-panel">
             <h2 className="panel-title" style={{ marginBottom: 20 }}>최근 7일 가격 추세 · {fuelLabel}</h2>
             <ResponsiveContainer width="100%" height={300}>
@@ -1378,7 +1378,7 @@ export default function SailDashboard() {
         )}
 
         {/* ── CHAIN (계열) ── */}
-        {fuelType !== "kerosene" && activeView === "chain" && (
+        {fuelType !== "kerosene" && fuelType !== "intl" && activeView === "chain" && (
           <PostedPriceTable
             data={data}
             groups={data.chainGroups}
