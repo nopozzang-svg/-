@@ -164,25 +164,40 @@ export default async function handler(req, res) {
 
   const errors = [];
 
-  // ─── 1. 주유소 게시가 수집 ───
-  try {
-    // 고유 station ID 목록
-    const stationIds = [...new Set(
-      ALL_GROUPS.flatMap(g => [g.sail.id, ...g.competitors.map(c => c.id)])
-    )];
+  // 주유소 게시가 + 국제지표 완전 병렬 실행 (10초 제한 대응)
+  const intlHeaders = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+  };
 
-    // 병렬 fetch (Opinet API)
-    const fetched = await Promise.all(
+  const stationIds = [...new Set(
+    ALL_GROUPS.flatMap(g => [g.sail.id, ...g.competitors.map(c => c.id)])
+  )];
+
+  // 모든 외부 요청 동시 시작
+  const [stationFetched, petroRes, exchRes] = await Promise.all([
+    // Opinet 전체 병렬
+    Promise.all(
       stationIds.map(id =>
         fetch(`${OPINET_BASE}/detailById.do?code=${OPINET_KEY}&out=json&id=${id}`)
           .then(r => r.json())
           .catch(() => null)
       )
-    );
+    ),
+    // 페트로넷
+    fetch("https://www.petronet.co.kr/v4/main.jsp", { headers: { ...intlHeaders, Referer: "https://www.petronet.co.kr/" } })
+      .catch(() => null),
+    // KMBCO 환율
+    fetch("https://www.kmbco.com/kor/rate/exchange_rate.do", { headers: { ...intlHeaders, Referer: "https://www.kmbco.com/" } })
+      .catch(() => null),
+  ]);
 
+  // ─── 1. 주유소 스냅샷 저장 ───
+  try {
     const results = {};
     stationIds.forEach((id, idx) => {
-      const json = fetched[idx];
+      const json = stationFetched[idx];
       if (!json?.RESULT?.OIL) return;
       const oil = Array.isArray(json.RESULT.OIL) ? json.RESULT.OIL[0] : json.RESULT.OIL;
       const prices = {};
@@ -196,7 +211,6 @@ export default async function handler(req, res) {
       results[id] = prices;
     });
 
-    // 스냅샷 빌드 (App.jsx savePricesToLocal 과 동일 형식)
     const snapshot = { _live: true };
     for (const group of ALL_GROUPS) {
       const sp = results[group.sail.id] || {};
@@ -208,31 +222,19 @@ export default async function handler(req, res) {
       snapshot[group.name] = { sg: sp.gasoline || 0, sd: sp.diesel || 0, comp };
     }
 
-    // Supabase 저장
     const saveRes = await supaUpsert("station_snapshots", { date: todayKST, snapshot });
     if (!saveRes.ok) errors.push(`station_snapshots upsert: ${saveRes.status}`);
   } catch (e) {
     errors.push(`station fetch: ${e.message}`);
   }
 
-  // ─── 2. 국제지표 수집 (페트로넷 + KMBCO) ───
+  // ─── 2. 국제지표 저장 ───
   try {
-    const headers = {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
-    };
+    const petroHtml = petroRes ? await petroRes.text() : "";
+    const exchHtml  = exchRes  ? await exchRes.text()  : "";
 
-    const [petroRes, exchRes] = await Promise.all([
-      fetch("https://www.petronet.co.kr/v4/main.jsp", { headers: { ...headers, Referer: "https://www.petronet.co.kr/" } }),
-      fetch("https://www.kmbco.com/kor/rate/exchange_rate.do", { headers: { ...headers, Referer: "https://www.kmbco.com/" } }),
-    ]);
-
-    const petroHtml = await petroRes.text();
-    const exchHtml  = await exchRes.text();
-
-    const petro = parsePetronet(petroHtml);
-    const exch  = parseExchange(exchHtml);
+    const petro = petroHtml ? parsePetronet(petroHtml) : null;
+    const exch  = exchHtml  ? parseExchange(exchHtml)  : null;
 
     const intlRow = {
       date:        todayKST,
