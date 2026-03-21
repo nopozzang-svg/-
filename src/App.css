@@ -1037,7 +1037,7 @@
   line-height: 1.4;
 }
 .mops-th-fuel { text-align: left; }
-.mops-th-accent { color: #7c3aed; background: rgba(124,58,237,0.04); }
+.mops-th-accent { color: #7c3aed; background: rgba(124,58,237,0.04); padding-right: 4px; }
 .mops-th-sub { font-size: 9px; font-weight: 400; color: #9ca3af; }
 
 .mops-tr:nth-child(odd) { background: #fafafa; }
@@ -1059,14 +1059,17 @@
 .mops-td-projected {
   color: #7c3aed;
   font-weight: 600;
+  padding-right: 4px;
 }
 .mops-th-diff {
   background: #f5f3ff;
   color: #7c3aed;
+  padding-left: 4px;
 }
 .mops-td-diff {
   text-align: right;
   font-size: 13px;
+  padding-left: 4px;
 }
 
 .mops-formula-note {
