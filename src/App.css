@@ -1060,6 +1060,14 @@
   color: #7c3aed;
   font-weight: 600;
 }
+.mops-th-diff {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+.mops-td-diff {
+  text-align: right;
+  font-size: 13px;
+}
 
 .mops-formula-note {
   font-size: 10px;

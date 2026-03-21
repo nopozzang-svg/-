@@ -33,19 +33,6 @@ function fmt(v: number | null | undefined): string {
   return Math.round(v).toLocaleString("ko-KR") + "원/ℓ";
 }
 
-/** 당월 평균 대비 변동 배지 */
-function DiffBadge({ a, b }: { a: number | null; b: number | null }) {
-  if (a == null || b == null) return null;
-  const diff = Math.round(a) - Math.round(b);
-  if (Math.abs(diff) < 1) return null;
-  const up = diff > 0;
-  return (
-    <span style={{ fontSize: 10, color: up ? "#ef4444" : "#2563eb", marginLeft: 4, whiteSpace: "nowrap" }}>
-      {up ? "▲" : "▼"} 당월比 {Math.abs(diff).toLocaleString("ko-KR")}원
-    </span>
-  );
-}
-
 /** 단일 결과 행 */
 function ResultRow({
   label,
@@ -54,8 +41,13 @@ function ResultRow({
 }: {
   label:      string;
   result:     MopsResult;
-  monthlyRef: number | null; // 당월 평균 (예측과 비교용)
+  monthlyRef: number | null;
 }) {
+  const diff = (result.projectedMonthlyAverage != null && monthlyRef != null)
+    ? Math.round(result.projectedMonthlyAverage) - Math.round(monthlyRef)
+    : null;
+  const up = diff != null && diff > 0;
+
   return (
     <tr className="mops-tr">
       <td className="mops-td mops-td-fuel">{label}</td>
@@ -67,7 +59,14 @@ function ResultRow({
       </td>
       <td className="mops-td mops-td-num mops-td-projected">
         {fmt(result.projectedMonthlyAverage)}
-        <DiffBadge a={result.projectedMonthlyAverage} b={monthlyRef} />
+      </td>
+      <td className="mops-td mops-td-num mops-td-diff">
+        {diff == null || Math.abs(diff) < 1
+          ? "—"
+          : <span style={{ color: up ? "#ef4444" : "#2563eb", fontWeight: 600 }}>
+              {up ? "▲" : "▼"} {Math.abs(diff).toLocaleString("ko-KR")}원
+            </span>
+        }
       </td>
     </tr>
   );
@@ -202,6 +201,7 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
                 <th className="mops-th">데일리<br /><span className="mops-th-sub">오늘</span></th>
                 <th className="mops-th">당월 평균<br /><span className="mops-th-sub">실적 기준</span></th>
                 <th className="mops-th mops-th-accent">당월 예측 평균<br /><span className="mops-th-sub">잔여 {getRemainingWeekdays(year, month, today)}평일 유지 가정</span></th>
+                <th className="mops-th mops-th-diff">당월比<br /><span className="mops-th-sub">예측 − 평균</span></th>
               </tr>
             </thead>
             <tbody>
