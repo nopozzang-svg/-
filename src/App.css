@@ -1084,6 +1084,76 @@
 /* ══════════════════════════════════════
    MOPS 상수 설정 모달
 ══════════════════════════════════════ */
+/* ── 비밀번호 모달 ── */
+.pw-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.pw-modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px 32px;
+  width: 300px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pw-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+.pw-desc {
+  font-size: 12px;
+  color: #6b7280;
+}
+.pw-input {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.pw-input:focus { border-color: #7c3aed; }
+.pw-error {
+  font-size: 12px;
+  color: #ef4444;
+}
+.pw-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.pw-cancel {
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  color: #374151;
+}
+.pw-confirm {
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: none;
+  background: #7c3aed;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pw-confirm:hover { background: #6d28d9; }
+
 .cm-overlay {
   position: fixed;
   inset: 0;

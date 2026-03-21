@@ -916,6 +916,23 @@ export default function SailDashboard() {
   const [intlLoading, setIntlLoading] = useState(false);
   const [showConstantsModal, setShowConstantsModal] = useState(false);
   const [mopsKey, setMopsKey] = useState(0); // 상수 저장 시 MopsSection 재계산 트리거
+  const [showPwPrompt, setShowPwPrompt] = useState(false);
+  const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState(false);
+
+  const handleOpenSettings = () => {
+    setPwInput("");
+    setPwError(false);
+    setShowPwPrompt(true);
+  };
+  const handlePwSubmit = () => {
+    if (pwInput === "rrlawldms11") {
+      setShowPwPrompt(false);
+      setShowConstantsModal(true);
+    } else {
+      setPwError(true);
+    }
+  };
 
   // 앱 최초 로드 시:
   // 1) 기존 오염된(가짜) localStorage 데이터 정리
@@ -1282,7 +1299,7 @@ export default function SailDashboard() {
           <MopsSection
             key={mopsKey}
             intlData={intlData}
-            onOpenSettings={() => setShowConstantsModal(true)}
+            onOpenSettings={handleOpenSettings}
           />
         )}
 
@@ -1457,6 +1474,30 @@ export default function SailDashboard() {
           />
         )}
       </main>
+
+      {/* ── 비밀번호 확인 모달 ── */}
+      {showPwPrompt && (
+        <div className="pw-overlay" onClick={e => { if (e.target === e.currentTarget) setShowPwPrompt(false); }}>
+          <div className="pw-modal">
+            <div className="pw-title">관리자 인증</div>
+            <div className="pw-desc">상수 설정은 관리자만 변경할 수 있습니다.</div>
+            <input
+              className="pw-input"
+              type="password"
+              placeholder="비밀번호 입력"
+              value={pwInput}
+              onChange={e => { setPwInput(e.target.value); setPwError(false); }}
+              onKeyDown={e => e.key === "Enter" && handlePwSubmit()}
+              autoFocus
+            />
+            {pwError && <div className="pw-error">비밀번호가 올바르지 않습니다.</div>}
+            <div className="pw-actions">
+              <button className="pw-cancel" onClick={() => setShowPwPrompt(false)}>취소</button>
+              <button className="pw-confirm" onClick={handlePwSubmit}>확인</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MOPS 상수 설정 모달 ── */}
       <ConstantsModal
