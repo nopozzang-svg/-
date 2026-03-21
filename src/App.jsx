@@ -878,11 +878,13 @@ export default function SailDashboard() {
     const hhmm     = nowKST.getUTCHours() * 60 + nowKST.getUTCMinutes(); // KST 시분(분 환산)
     const after8am = hhmm >= 8 * 60; // KST 08:00 이후 여부
 
-    // 캐시 확인: 오늘 08:00 이후에 저장된 데이터가 있으면 재사용
+    // 캐시 확인: 오늘 08:00 이후에 저장된 데이터이고 history가 포함된 경우만 재사용
+    // (history 없는 구버전 캐시는 무시하고 재fetch)
     try {
       const cached = JSON.parse(localStorage.getItem(INTL_KEY) || "null");
-      if (cached && cached.date === todayStr && cached.fetchedAfter8) {
+      if (cached && cached.date === todayStr && cached.fetchedAfter8 && cached.data?.petro?.wti?.history) {
         setIntlData(cached.data);
+        mergeIntlHistory(cached.data.petro, cached.data.exch);
         return;
       }
     } catch (_) {}
