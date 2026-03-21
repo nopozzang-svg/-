@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import {
-  extractMonthlyValues,
+  extractActualMonthlyValues,
+  getRemainingWeekdays,
   calculateProductSummary,
 } from "../lib/mopsCalculations";
 import {
@@ -95,47 +96,10 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       history = JSON.parse(localStorage.getItem(INTL_HISTORY_KEY) || "{}");
     } catch { /* ignore */ }
 
-    const exchValues = extractMonthlyValues(history, "exch", year, month, today);
-    const dailyExch  = intlData.exch?.current ?? null;
-
-    // ── DEBUG: 무연(gasoline) 평균 계산 상세 출력 ──
-    const debugGasValues  = extractMonthlyValues(history, "mopsGas", year, month, today);
-    const debugExchValues = extractMonthlyValues(history, "exch",    year, month, today);
-    const mm = String(month + 1).padStart(2, "0");
-    const debugDates: string[] = [];
-    let lastG: number | null = null;
-    let lastE: number | null = null;
-    for (let d = 1; d <= today; d++) {
-      const dd      = String(d).padStart(2, "0");
-      const dateStr = `${year}-${mm}-${dd}`;
-      const dayData = history[dateStr];
-      const rawG    = dayData?.["mopsGas"]  ?? null;
-      const rawE    = dayData?.["exch"]     ?? null;
-      const isNewG  = rawG !== null;
-      const isNewE  = rawE !== null;
-      if (isNewG) lastG = rawG;
-      if (isNewE) lastE = rawE;
-      if (lastG !== null) {
-        debugDates.push(
-          `  ${dateStr} | mopsGas=${lastG}${isNewG ? "" : "(cf)"} | exch=${lastE}${isNewE ? "" : "(cf)"}`
-        );
-      }
-    }
-    const avgG = debugGasValues.length ? debugGasValues.reduce((s,v)=>s+v,0)/debugGasValues.length : null;
-    const avgE = debugExchValues.length ? debugExchValues.reduce((s,v)=>s+v,0)/debugExchValues.length : null;
-    const c    = constants.products.gasoline;
-    const monthlyResult = (avgG != null && avgE != null)
-      ? (((avgG + c.premium + c.tariff) / 158.984) * avgE + c.importCharge + c.tax) * 1.1
-      : null;
-    console.groupCollapsed("[MOPS DEBUG] 무연 당월 평균 계산");
-    console.log(`포함 날짜 수: ${debugGasValues.length}일 / 달력 ${today}일`);
-    console.log(debugDates.join("\n"));
-    console.log(`제품가 평균: ${avgG?.toFixed(4)}`);
-    console.log(`환율 평균:   ${avgE?.toFixed(4)}`);
-    console.log(`상수: 프리미엄=${c.premium} 관세=${c.tariff} 수입부과금=${c.importCharge} 세금=${c.tax}`);
-    console.log(`최종 당월 평균: ${monthlyResult?.toFixed(2)}`);
-    console.groupEnd();
-    // ── DEBUG END ──
+    // 국제지표 calcMonthStats 와 동일한 방식으로 추출
+    const exchValues       = extractActualMonthlyValues(history, "exch",    year, month);
+    const remainingWeekdays = getRemainingWeekdays(year, month, today);
+    const dailyExch        = intlData.exch?.current ?? null;
 
     const compute = (
       productField: string,
@@ -145,9 +109,9 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       calculateProductSummary({
         dailyProductPrice:    dailyValue ?? null,
         dailyExchangeRate:    dailyExch,
-        monthlyProductValues: extractMonthlyValues(history, productField, year, month, today),
+        monthlyProductValues: extractActualMonthlyValues(history, productField, year, month),
         monthlyExchValues:    exchValues,
-        daysInMonth,
+        remainingWeekdays,
         constants:            constants.products[productKey],
       });
 
@@ -156,7 +120,7 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       diesel:   compute("mopsDiesel",  intlData.petro?.mopsDiesel?.current,   "diesel"),
       kerosene: compute("mopsKero",    intlData.petro?.mopsKerosene?.current,  "kerosene"),
     };
-  }, [intlData, constants, year, month, today, daysInMonth]);
+  }, [intlData, constants, year, month, today]);
 
   const missingConstants = !constants;
   const showWarning      = missingConstants && today <= 5; // 월 1~5일에만 배너 표시
@@ -236,8 +200,8 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
               <tr>
                 <th className="mops-th mops-th-fuel">유종</th>
                 <th className="mops-th">데일리<br /><span className="mops-th-sub">오늘</span></th>
-                <th className="mops-th">당월 평균<br /><span className="mops-th-sub">1일~오늘 실적</span></th>
-                <th className="mops-th mops-th-accent">당월 예측 평균<br /><span className="mops-th-sub">잔여 {daysInMonth - today}일 유지 가정</span></th>
+                <th className="mops-th">당월 평균<br /><span className="mops-th-sub">실적 기준</span></th>
+                <th className="mops-th mops-th-accent">당월 예측 평균<br /><span className="mops-th-sub">잔여 {getRemainingWeekdays(year, month, today)}평일 유지 가정</span></th>
               </tr>
             </thead>
             <tbody>

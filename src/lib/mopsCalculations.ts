@@ -6,20 +6,21 @@
  *   = { [(제품가 + 프리미엄 + 관세) ÷ 158.984] × 환율 + 수입부과금 + 세금 } × 1.1
  *
  * [단위]
- *   제품가, 프리미엄, 관세: $/bbl  → 분자 안 (배럴 기준)
+ *   제품가, 프리미엄, 관세: $/bbl → 분자 안 (배럴 기준)
  *   수입부과금, 세금: 원/L         → 환산 후 바깥에서 더함
  *   환율: 원/달러
  *   결과: 원/L (부가세 10% 포함)
  *
+ * [평균 계산 방식] — 국제지표 월간 분석(calcMonthStats)과 동일
+ *   - 실제 데이터가 있는 날만 포함 (carry-forward 없음)
+ *   - 남은 일수: 오늘 이후 평일(월~금) 수
+ *   - 예측 분모: 실적수 + 남은평일수
+ *
  * [계산 방식]
  *   - 데일리:          오늘 제품가 + 오늘 환율
- *   - 당월 평균:       1일~오늘 평균 제품가 + 평균 환율
- *   - 당월 예측 평균:  1일~오늘 실적 + 남은 캘린더 일수는 오늘 값 유지 가정한 평균 제품가 + 평균 환율
- *   ※ "일별 MOPS 먼저 계산 후 평균" 방식이 아님 — 평균값을 공식에 넣는 방식임
- *
- * [공휴일/주말 처리]
- *   carry-forward 정책: 해당 일 데이터 없으면 직전 영업일 값 사용
- *   월 첫 영업일 이전 날짜는 포함하지 않음 (첫 데이터 도착 전까지 skip)
+ *   - 당월 평균:       실적 제품가 평균 + 실적 환율 평균 → 공식 대입
+ *   - 당월 예측 평균:  예측 제품가 평균 + 예측 환율 평균 → 공식 대입
+ *   ※ "일별 MOPS 계산 후 평균" 방식이 아님 — 평균값을 공식에 넣는 방식임
  */
 
 import type {
@@ -65,94 +66,96 @@ export function getPeriodAverage(values: number[]): number | null {
 
 /**
  * 당월 예측 평균 계산 (순수 함수)
+ * — 국제지표 calcMonthStats 와 동일한 로직 —
  *
- * 예측 평균 = (실제 누적합 + 오늘 값 × 남은 일수) / 이번 달 총 일수
+ * 예측 평균 = (실제 누적합 + 마지막값 × 남은평일수) / (실적수 + 남은평일수)
  *
- * @param actualValues   1일~오늘까지 carry-forward 채운 값 배열
- * @param todayValue     오늘 값 (남은 일수에 반복 적용)
- * @param daysInMonth    이번 달 총 캘린더 일수
- * @param actualDayCount 실제 데이터 구간 일수 (= actualValues.length)
+ * @param actualValues      실제 데이터가 있는 날짜의 값 배열 (carry-forward 없음)
+ * @param todayValue        마지막 실제 값 (남은 평일에 반복 적용)
+ * @param remainingWeekdays 오늘 이후 남은 평일(월~금) 수
+ * @param actualDayCount    실적 데이터 포인트 수
  */
 export function getProjectedMonthAverage({
   actualValues,
   todayValue,
-  daysInMonth,
+  remainingWeekdays,
   actualDayCount,
 }: ProjectedAverageInput): number | null {
   if (!actualValues || actualValues.length === 0) return null;
-  if (actualDayCount <= 0 || daysInMonth <= 0) return null;
+  if (actualDayCount <= 0) return null;
 
-  const remaining = Math.max(0, daysInMonth - actualDayCount);
-  const totalSum  = actualValues.reduce((sum, v) => sum + v, 0) + todayValue * remaining;
-  return totalSum / daysInMonth;
+  const totalSum = actualValues.reduce((sum, v) => sum + v, 0) + todayValue * remainingWeekdays;
+  return totalSum / (actualDayCount + remainingWeekdays);
 }
 
 /**
- * localStorage의 sail_intl_history에서 당월 특정 필드를 carry-forward 적용하여 배열로 추출
+ * localStorage의 sail_intl_history에서 당월 특정 필드의 실제값만 추출
+ * — 국제지표 calcMonthStats 와 동일한 필터링 로직 —
  *
- * [정책] carry-forward: 해당 날짜 데이터가 없으면 직전 영업일 값을 사용
- * [정책] 월 첫 영업일 이전 날짜(예: 주말 시작)는 배열에서 제외 (null carry 없음)
+ * [정책] carry-forward 없음: 실제 데이터가 있는 날짜의 값만 포함
+ * [정책] 날짜 오름차순 정렬
  *
  * @param history  { "YYYY-MM-DD": { mopsGas, mopsDiesel, mopsKero, exch, ... } }
- * @param field    추출할 필드명 ("mopsGas" | "mopsDiesel" | "mopsKero" | "exch" 등)
+ * @param field    추출할 필드명
  * @param year     연도 (KST 기준)
  * @param month    월 (0-indexed, KST 기준)
- * @param endDay   오늘 날짜 (포함, 1-indexed)
  */
-export function extractMonthlyValues(
+export function extractActualMonthlyValues(
   history: Record<string, Record<string, number>>,
   field: string,
   year: number,
   month: number,
-  endDay: number
 ): number[] {
-  const values: number[] = [];
-  let lastVal: number | null = null;
+  return Object.entries(history)
+    .filter(([date]) => {
+      const d = new Date(date);
+      return d.getFullYear() === year && d.getMonth() === month;
+    })
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, v]) => v[field])
+    .filter((v): v is number => v != null && !isNaN(v));
+}
 
-  for (let d = 1; d <= endDay; d++) {
-    const mm      = String(month + 1).padStart(2, "0");
-    const dd      = String(d).padStart(2, "0");
-    const dateStr = `${year}-${mm}-${dd}`;
-    const dayData = history[dateStr];
-
-    if (dayData != null && dayData[field] != null) {
-      lastVal = dayData[field];
-    }
-
-    // lastVal이 null이면 아직 첫 영업일 도래 전 → 배열에 추가하지 않음
-    if (lastVal !== null) {
-      values.push(lastVal);
-    }
+/**
+ * 오늘 이후 남은 평일(월~금) 수 계산
+ * — 국제지표 calcMonthStats 와 동일한 로직 —
+ */
+export function getRemainingWeekdays(year: number, month: number, today: number): number {
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  let remaining = 0;
+  for (let d = today + 1; d <= lastDay; d++) {
+    const dow = new Date(year, month, d).getDay();
+    if (dow !== 0 && dow !== 6) remaining++;
   }
-
-  return values;
+  return remaining;
 }
 
 /**
  * 단일 유종의 데일리/당월평균/당월예측평균 MOPS 계산
  *
- * 가정:
- *   - 제품가와 환율을 각각 평균 낸 뒤 MOPS 공식에 대입함
- *   - "일별 MOPS 계산 후 평균" 방식을 사용하지 않음
+ * 평균 계산: 국제지표 월간 분석(calcMonthStats)과 동일한 방식
+ *   - 실적: 실제 데이터 있는 날만 (carry-forward 없음)
+ *   - 예측: 마지막값 × 남은평일 / (실적수 + 남은평일)
+ *   - 평균 제품가 + 평균 환율을 공식에 대입 (일별 MOPS 평균 아님)
  */
 export function calculateProductSummary({
   dailyProductPrice,
   dailyExchangeRate,
   monthlyProductValues,
   monthlyExchValues,
-  daysInMonth,
+  remainingWeekdays,
   constants,
 }: {
   dailyProductPrice:    number | null;
   dailyExchangeRate:    number | null;
   monthlyProductValues: number[];
   monthlyExchValues:    number[];
-  daysInMonth:          number;
+  remainingWeekdays:    number;
   constants:            ProductConstants;
 }): MopsResult {
   const result: MopsResult = {
-    daily:                  null,
-    monthlyAverage:         null,
+    daily:                   null,
+    monthlyAverage:          null,
     projectedMonthlyAverage: null,
   };
 
@@ -179,22 +182,22 @@ export function calculateProductSummary({
   }
 
   // ── 3. 당월 예측 평균 ──
-  const todayProduct = monthlyProductValues.at(-1) ?? null;
-  const todayExch    = monthlyExchValues.at(-1) ?? null;
-  const actualCount  = monthlyProductValues.length;
+  const todayProduct  = monthlyProductValues.at(-1) ?? null;
+  const todayExch     = monthlyExchValues.at(-1)    ?? null;
+  const actualCount   = monthlyProductValues.length;
 
   if (todayProduct != null && todayExch != null && actualCount > 0) {
     const projectedProduct = getProjectedMonthAverage({
-      actualValues:   monthlyProductValues,
-      todayValue:     todayProduct,
-      daysInMonth,
-      actualDayCount: actualCount,
+      actualValues:      monthlyProductValues,
+      todayValue:        todayProduct,
+      remainingWeekdays,
+      actualDayCount:    actualCount,
     });
     const projectedExch = getProjectedMonthAverage({
-      actualValues:   monthlyExchValues,
-      todayValue:     todayExch,
-      daysInMonth,
-      actualDayCount: actualCount,
+      actualValues:      monthlyExchValues,
+      todayValue:        todayExch,
+      remainingWeekdays,
+      actualDayCount:    monthlyExchValues.length,
     });
 
     if (projectedProduct != null && projectedExch != null) {
@@ -207,4 +210,15 @@ export function calculateProductSummary({
   }
 
   return result;
+}
+
+// 하위 호환용 — MopsSection.tsx에서 더 이상 사용하지 않음
+export function extractMonthlyValues(
+  history: Record<string, Record<string, number>>,
+  field: string,
+  year: number,
+  month: number,
+  _endDay: number
+): number[] {
+  return extractActualMonthlyValues(history, field, year, month);
 }

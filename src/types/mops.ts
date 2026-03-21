@@ -53,12 +53,12 @@ export interface MopsPriceInput {
 
 /** getProjectedMonthAverage 입력 파라미터 */
 export interface ProjectedAverageInput {
-  /** 1일~오늘까지 carry-forward 채운 값 배열 */
-  actualValues:   number[];
-  /** 오늘 값 (남은 일수에 사용) */
-  todayValue:     number;
-  /** 이번 달 총 캘린더 일수 */
-  daysInMonth:    number;
-  /** 실제 데이터 구간 캘린더 일수 (actualValues.length 와 동일) */
-  actualDayCount: number;
+  /** 실제 데이터가 있는 날짜의 값 배열 (carry-forward 없음) */
+  actualValues:      number[];
+  /** 마지막 실제 값 (남은 평일에 반복 적용) */
+  todayValue:        number;
+  /** 오늘 이후 남은 평일(월~금) 수 */
+  remainingWeekdays: number;
+  /** 실제 데이터 포인트 수 (= actualValues.length) */
+  actualDayCount:    number;
 }
