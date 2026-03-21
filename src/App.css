@@ -455,6 +455,108 @@
   margin: 0 auto;
 }
 
+/* ── 국제 원유 · 환율 · MOPS ── */
+.intl-section {
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.intl-crude-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.intl-crude-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.intl-card-label {
+  font-size: 10px;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+}
+
+.intl-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: #111827;
+  line-height: 1.15;
+}
+
+.intl-card-unit {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.intl-card-change {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 2px;
+}
+
+.intl-mops-box {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.intl-mops-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #374151;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.intl-mops-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.intl-mops-row + .intl-mops-row td {
+  border-top: 1px solid #f3f4f6;
+}
+
+.intl-mops-name {
+  font-size: 13px;
+  color: #374151;
+  padding: 7px 0;
+  width: 50%;
+}
+
+.intl-mops-val {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: #111827;
+  text-align: right;
+  padding: 7px 8px;
+}
+
+.intl-mops-chg {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: right;
+  padding: 7px 0;
+  min-width: 70px;
+}
+
 /* ── Summary Cards ── */
 .summary-grid {
   display: grid;
@@ -639,6 +741,14 @@
 
   .dash-title-block .dash-sub {
     font-size: 11px;
+  }
+
+  .intl-crude-row {
+    gap: 12px;
+  }
+
+  .intl-card-value {
+    font-size: 26px;
   }
 
   .summary-grid {

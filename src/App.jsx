@@ -759,6 +759,8 @@ export default function SailDashboard() {
       regionAvg: 0,
     }))
   );
+  const [intlData, setIntlData] = useState(null);
+  const [intlLoading, setIntlLoading] = useState(false);
 
   // 앱 최초 로드 시:
   // 1) 기존 오염된(가짜) localStorage 데이터 정리
@@ -766,7 +768,24 @@ export default function SailDashboard() {
   useEffect(() => {
     cleanCorruptedHistory();
     fetchLiveData();
+    fetchIntlData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchIntlData = async () => {
+    setIntlLoading(true);
+    try {
+      const [petroRes, exchRes] = await Promise.all([
+        fetch("/api/petronet"),
+        fetch("/api/exchange"),
+      ]);
+      const petro = await petroRes.json();
+      const exch  = await exchRes.json();
+      setIntlData({ petro, exch });
+    } catch (e) {
+      console.warn("International data fetch failed:", e);
+    }
+    setIntlLoading(false);
+  };
 
   const fuelLabel = fuelType === "gasoline" ? "휘발유" : fuelType === "diesel" ? "경유" : "등유";
 
@@ -946,6 +965,64 @@ export default function SailDashboard() {
 
       {/* ── Main ── */}
       <main className="dash-main">
+
+        {/* ── 국제 원유 · 환율 · MOPS ── */}
+        <div className="intl-section">
+          <div className="intl-crude-row">
+            {[
+              { label: "WTI",       data: intlData?.petro?.wti,   unit: "$/bbl" },
+              { label: "두바이유",   data: intlData?.petro?.dubai, unit: "$/bbl" },
+              { label: "원/달러",    data: intlData?.exch,         unit: "원",   round: true },
+            ].map(({ label, data, unit, round }) => {
+              const cur  = data?.current ?? null;
+              const chg  = data?.change  ?? null;
+              const up   = chg !== null && chg > 0;
+              const dn   = chg !== null && chg < 0;
+              const disp = cur === null
+                ? (intlLoading ? "—" : "—")
+                : round ? Math.round(cur).toLocaleString() : cur.toFixed(2);
+              return (
+                <div key={label} className="intl-crude-card">
+                  <span className="intl-card-label">{label}</span>
+                  <span className="intl-card-value">{disp}</span>
+                  <span className="intl-card-unit">{unit}</span>
+                  {chg !== null && (
+                    <span className="intl-card-change" style={{ color: up ? "#ef4444" : dn ? "#2563eb" : "#6b7280" }}>
+                      {up ? "▲" : dn ? "▼" : "—"}{Math.abs(round ? Math.round(chg) : chg).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="intl-mops-box">
+            <div className="intl-mops-title">싱가포르 MOPS 국제제품가</div>
+            <table className="intl-mops-table">
+              <tbody>
+                {[
+                  { label: "무연(92RON)", data: intlData?.petro?.mopsGasoline },
+                  { label: "경유(0.001%)", data: intlData?.petro?.mopsDiesel },
+                  { label: "등유",         data: intlData?.petro?.mopsKerosene },
+                ].map(({ label, data }) => {
+                  const cur = data?.current ?? null;
+                  const chg = data?.change  ?? null;
+                  const up  = chg !== null && chg > 0;
+                  const dn  = chg !== null && chg < 0;
+                  return (
+                    <tr key={label} className="intl-mops-row">
+                      <td className="intl-mops-name">{label}</td>
+                      <td className="intl-mops-val">{cur !== null ? cur.toFixed(2) : "—"}</td>
+                      <td className="intl-mops-chg" style={{ color: up ? "#ef4444" : dn ? "#2563eb" : "#6b7280" }}>
+                        {chg !== null ? `${up ? "▲" : dn ? "▼" : "—"} ${Math.abs(chg).toFixed(2)}` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
         {/* Summary Cards — 등유 탭에서는 숨김 */}
         {fuelType !== "kerosene" && (
