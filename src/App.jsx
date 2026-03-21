@@ -772,6 +772,33 @@ export default function SailDashboard() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchIntlData = async () => {
+    const INTL_KEY = "sail_intl_prices";
+
+    // KST 기준 오늘 날짜 문자열 + 현재 시각(분 단위)
+    const nowKST   = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const todayStr = nowKST.toISOString().split("T")[0];
+    const hhmm     = nowKST.getUTCHours() * 60 + nowKST.getUTCMinutes(); // KST 시분(분 환산)
+    const after8am = hhmm >= 8 * 60; // KST 08:00 이후 여부
+
+    // 캐시 확인: 오늘 08:00 이후에 저장된 데이터가 있으면 재사용
+    try {
+      const cached = JSON.parse(localStorage.getItem(INTL_KEY) || "null");
+      if (cached && cached.date === todayStr && cached.fetchedAfter8) {
+        setIntlData(cached.data);
+        return;
+      }
+    } catch (_) {}
+
+    // 08:00 이전이면 외부 요청 하지 않고 전날 캐시 표시
+    if (!after8am) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(INTL_KEY) || "null");
+        if (cached?.data) setIntlData(cached.data);
+      } catch (_) {}
+      return;
+    }
+
+    // 08:00 이후 + 유효 캐시 없음 → 실제 fetch
     setIntlLoading(true);
     try {
       const [petroRes, exchRes] = await Promise.all([
@@ -780,9 +807,16 @@ export default function SailDashboard() {
       ]);
       const petro = await petroRes.json();
       const exch  = await exchRes.json();
-      setIntlData({ petro, exch });
+      const data  = { petro, exch };
+      setIntlData(data);
+      localStorage.setItem(INTL_KEY, JSON.stringify({ date: todayStr, fetchedAfter8: true, data }));
     } catch (e) {
       console.warn("International data fetch failed:", e);
+      // fetch 실패 시 이전 캐시라도 표시
+      try {
+        const cached = JSON.parse(localStorage.getItem(INTL_KEY) || "null");
+        if (cached?.data) setIntlData(cached.data);
+      } catch (_) {}
     }
     setIntlLoading(false);
   };
