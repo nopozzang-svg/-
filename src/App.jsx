@@ -972,7 +972,7 @@ export default function SailDashboard() {
             {[
               { label: "WTI",       data: intlData?.petro?.wti,   unit: "$/bbl" },
               { label: "두바이유",   data: intlData?.petro?.dubai, unit: "$/bbl" },
-              { label: "원/달러",    data: intlData?.exch,         unit: "원",   round: true },
+              { label: "원/달러",    data: intlData?.exch,         unit: "원" },
             ].map(({ label, data, unit, round }) => {
               const cur  = data?.current ?? null;
               const chg  = data?.change  ?? null;
@@ -980,7 +980,7 @@ export default function SailDashboard() {
               const dn   = chg !== null && chg < 0;
               const disp = cur === null
                 ? (intlLoading ? "—" : "—")
-                : round ? Math.round(cur).toLocaleString() : cur.toFixed(2);
+                : cur.toFixed(1);
               return (
                 <div key={label} className="intl-crude-card">
                   <span className="intl-card-label">{label}</span>
@@ -988,7 +988,7 @@ export default function SailDashboard() {
                   <span className="intl-card-unit">{unit}</span>
                   {chg !== null && (
                     <span className="intl-card-change" style={{ color: up ? "#ef4444" : dn ? "#2563eb" : "#6b7280" }}>
-                      {up ? "▲" : dn ? "▼" : "—"}{Math.abs(round ? Math.round(chg) : chg).toLocaleString()}
+                      {up ? "▲" : dn ? "▼" : "—"}{Math.abs(chg).toFixed(1)}
                     </span>
                   )}
                 </div>
