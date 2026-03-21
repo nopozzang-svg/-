@@ -27,21 +27,21 @@ interface Props {
   onOpenSettings: () => void;
 }
 
-/** 숫자 표시 헬퍼 */
+/** 숫자 표시 헬퍼 — #,###원/ℓ */
 function fmt(v: number | null | undefined): string {
   if (v == null) return "—";
-  return v.toFixed(2);
+  return Math.round(v).toLocaleString("ko-KR") + "원/ℓ";
 }
 
-/** 변화 방향 배지 */
+/** 당월 평균 대비 변동 배지 */
 function DiffBadge({ a, b }: { a: number | null; b: number | null }) {
   if (a == null || b == null) return null;
-  const diff = a - b;
-  if (Math.abs(diff) < 0.01) return null;
+  const diff = Math.round(a) - Math.round(b);
+  if (Math.abs(diff) < 1) return null;
   const up = diff > 0;
   return (
-    <span style={{ fontSize: 10, color: up ? "#ef4444" : "#2563eb", marginLeft: 4 }}>
-      {up ? "▲" : "▼"}{Math.abs(diff).toFixed(2)}
+    <span style={{ fontSize: 10, color: up ? "#ef4444" : "#2563eb", marginLeft: 4, whiteSpace: "nowrap" }}>
+      {up ? "▲" : "▼"} 당월比 {Math.abs(diff).toLocaleString("ko-KR")}원
     </span>
   );
 }
