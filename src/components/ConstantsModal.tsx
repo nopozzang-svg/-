@@ -175,7 +175,7 @@ export default function ConstantsModal({ isOpen, onClose, onSaved }: Props) {
         <div className="cm-formula">
           <span className="cm-formula-label">계산식 </span>
           <span className="cm-formula-text">
-            &#123;[(제품가 + 수입부과금 + 관세) ÷ 158.984] × 환율 + 세금 + 프리미엄&#125; × 1.1
+            &#123;[(제품가 + 프리미엄 + 관세) ÷ 158.984] × 환율 + 수입부과금 + 세금&#125; × 1.1
           </span>
         </div>
 

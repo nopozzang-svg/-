@@ -215,7 +215,7 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
 
           {/* 계산식 참고 */}
           <div className="mops-formula-note">
-            { "[(제품가 + 수입부과금 + 관세) ÷ 158.984] × 환율 + 세금 + 프리미엄" } × 1.1
+            { "[(제품가 + 프리미엄 + 관세) ÷ 158.984] × 환율 + 수입부과금 + 세금" } × 1.1
           </div>
         </div>
       )}

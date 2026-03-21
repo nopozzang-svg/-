@@ -3,12 +3,12 @@
  *
  * [계산식]
  * 국내 환산 MOPS (원/L, 부가세 포함)
- *   = { [(제품가 + 수입부과금 + 관세) ÷ 158.984] × 환율 + 세금 + 프리미엄 } × 1.1
+ *   = { [(제품가 + 프리미엄 + 관세) ÷ 158.984] × 환율 + 수입부과금 + 세금 } × 1.1
  *
  * [단위]
- *   제품가, 수입부과금, 관세: $/bbl
+ *   제품가, 프리미엄, 관세: $/bbl  → 분자 안 (배럴 기준)
+ *   수입부과금, 세금: 원/L         → 환산 후 바깥에서 더함
  *   환율: 원/달러
- *   세금, 프리미엄: 원/L
  *   결과: 원/L (부가세 10% 포함)
  *
  * [계산 방식]
@@ -36,7 +36,10 @@ const VAT_RATE = 1.1;
 
 /**
  * 국내 환산 MOPS 가격 계산 (순수 함수)
- * = { [(제품가 + 수입부과금 + 관세) ÷ 158.984] × 환율 + 세금 + 프리미엄 } × 1.1
+ * = { [(제품가 + 프리미엄 + 관세) ÷ 158.984] × 환율 + 수입부과금 + 세금 } × 1.1
+ *
+ * 프리미엄·관세: $/bbl → 분자 안
+ * 수입부과금·세금: 원/L → 환산 후 바깥에서 더함
  */
 export function calculateMopsPrice({
   productPrice,
@@ -47,8 +50,8 @@ export function calculateMopsPrice({
   premium,
 }: MopsPriceInput): number {
   const perLiter =
-    ((productPrice + importCharge + tariff) / BARRELS_TO_LITERS) * exchangeRate;
-  return (perLiter + tax + premium) * VAT_RATE;
+    ((productPrice + premium + tariff) / BARRELS_TO_LITERS) * exchangeRate;
+  return (perLiter + importCharge + tax) * VAT_RATE;
 }
 
 /**
