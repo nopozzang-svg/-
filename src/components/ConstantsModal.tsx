@@ -25,10 +25,10 @@ const PRODUCT_LABELS: Record<ProductKey, string> = {
 };
 
 const FIELD_META: Record<ConstantKey, { label: string; unit: string; step: string }> = {
-  importCharge: { label: "수입부과금", unit: "$/bbl", step: "0.01"  },
+  importCharge: { label: "수입부과금", unit: "원/ℓ",  step: "0.01"  },
   tariff:       { label: "관세",       unit: "$/bbl", step: "0.001" },
-  tax:          { label: "세금",       unit: "원/L",  step: "0.01"  },
-  premium:      { label: "프리미엄",   unit: "원/L",  step: "0.01"  },
+  tax:          { label: "세금",       unit: "원/ℓ",  step: "0.01"  },
+  premium:      { label: "프리미엄",   unit: "$/bbl", step: "0.01"  },
 };
 
 function emptyProducts(): MonthConstants["products"] {

@@ -77,13 +77,13 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
   const constants  = getCurrentMonthConstants(monthKey);
 
   // KST 기준 날짜 정보
-  const { year, month, today, daysInMonth } = useMemo(() => {
-    const kst       = new Date(Date.now() + 9 * 60 * 60 * 1000);
-    const y         = kst.getUTCFullYear();
-    const m         = kst.getUTCMonth(); // 0-indexed
-    const d         = kst.getUTCDate();
-    const lastDay   = new Date(y, m + 1, 0).getDate();
-    return { year: y, month: m, today: d, daysInMonth: lastDay };
+  const { year, month, today } = useMemo(() => {
+    const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    return {
+      year:  kst.getUTCFullYear(),
+      month: kst.getUTCMonth(), // 0-indexed
+      today: kst.getUTCDate(),
+    };
   }, []);
 
   // 계산 결과 (intlData 또는 constants 변경 시 재계산)
