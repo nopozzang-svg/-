@@ -926,7 +926,7 @@ export default function SailDashboard() {
     setShowPwPrompt(true);
   };
   const handlePwSubmit = () => {
-    if (pwInput === "rrlawldms11") {
+    if (pwInput === "rlawldms11") {
       setShowPwPrompt(false);
       setShowConstantsModal(true);
     } else {
