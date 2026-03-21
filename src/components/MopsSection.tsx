@@ -98,6 +98,45 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
     const exchValues = extractMonthlyValues(history, "exch", year, month, today);
     const dailyExch  = intlData.exch?.current ?? null;
 
+    // ── DEBUG: 무연(gasoline) 평균 계산 상세 출력 ──
+    const debugGasValues  = extractMonthlyValues(history, "mopsGas", year, month, today);
+    const debugExchValues = extractMonthlyValues(history, "exch",    year, month, today);
+    const mm = String(month + 1).padStart(2, "0");
+    const debugDates: string[] = [];
+    let lastG: number | null = null;
+    let lastE: number | null = null;
+    for (let d = 1; d <= today; d++) {
+      const dd      = String(d).padStart(2, "0");
+      const dateStr = `${year}-${mm}-${dd}`;
+      const dayData = history[dateStr];
+      const rawG    = dayData?.["mopsGas"]  ?? null;
+      const rawE    = dayData?.["exch"]     ?? null;
+      const isNewG  = rawG !== null;
+      const isNewE  = rawE !== null;
+      if (isNewG) lastG = rawG;
+      if (isNewE) lastE = rawE;
+      if (lastG !== null) {
+        debugDates.push(
+          `  ${dateStr} | mopsGas=${lastG}${isNewG ? "" : "(cf)"} | exch=${lastE}${isNewE ? "" : "(cf)"}`
+        );
+      }
+    }
+    const avgG = debugGasValues.length ? debugGasValues.reduce((s,v)=>s+v,0)/debugGasValues.length : null;
+    const avgE = debugExchValues.length ? debugExchValues.reduce((s,v)=>s+v,0)/debugExchValues.length : null;
+    const c    = constants.products.gasoline;
+    const monthlyResult = (avgG != null && avgE != null)
+      ? (((avgG + c.premium + c.tariff) / 158.984) * avgE + c.importCharge + c.tax) * 1.1
+      : null;
+    console.groupCollapsed("[MOPS DEBUG] 무연 당월 평균 계산");
+    console.log(`포함 날짜 수: ${debugGasValues.length}일 / 달력 ${today}일`);
+    console.log(debugDates.join("\n"));
+    console.log(`제품가 평균: ${avgG?.toFixed(4)}`);
+    console.log(`환율 평균:   ${avgE?.toFixed(4)}`);
+    console.log(`상수: 프리미엄=${c.premium} 관세=${c.tariff} 수입부과금=${c.importCharge} 세금=${c.tax}`);
+    console.log(`최종 당월 평균: ${monthlyResult?.toFixed(2)}`);
+    console.groupEnd();
+    // ── DEBUG END ──
+
     const compute = (
       productField: string,
       dailyValue:   number | null | undefined,
