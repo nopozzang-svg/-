@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
+import MopsSection from "./components/MopsSection";
+import ConstantsModal from "./components/ConstantsModal";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, Legend, Cell, ReferenceLine
@@ -912,6 +914,8 @@ export default function SailDashboard() {
   );
   const [intlData, setIntlData] = useState(null);
   const [intlLoading, setIntlLoading] = useState(false);
+  const [showConstantsModal, setShowConstantsModal] = useState(false);
+  const [mopsKey, setMopsKey] = useState(0); // 상수 저장 시 MopsSection 재계산 트리거
 
   // 앱 최초 로드 시:
   // 1) 기존 오염된(가짜) localStorage 데이터 정리
@@ -1273,6 +1277,15 @@ export default function SailDashboard() {
           );
         })()}
 
+        {/* ── 국내 환산 MOPS — 국제지표 탭에서만 표시 ── */}
+        {fuelType === "intl" && (
+          <MopsSection
+            key={mopsKey}
+            intlData={intlData}
+            onOpenSettings={() => setShowConstantsModal(true)}
+          />
+        )}
+
         {/* Summary Cards — 등유·국제지표 탭에서는 숨김 */}
         {fuelType !== "kerosene" && fuelType !== "intl" && (
           <div className="summary-grid">
@@ -1444,6 +1457,13 @@ export default function SailDashboard() {
           />
         )}
       </main>
+
+      {/* ── MOPS 상수 설정 모달 ── */}
+      <ConstantsModal
+        isOpen={showConstantsModal}
+        onClose={() => setShowConstantsModal(false)}
+        onSaved={() => setMopsKey(k => k + 1)}
+      />
 
       <footer className="dash-footer">
         <span>주식회사 세일 게시가 모니터링 대시보드 · 오피넷 API 기반</span>
