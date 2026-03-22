@@ -158,57 +158,34 @@ export default function SalesReport() {
         try {
           const wb = XLSX.read(e.target.result, { type: "array", cellDates: false });
           const ws = wb.Sheets[wb.SheetNames[0]];
-          const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-          const headerRow = findHeaderRow(ws);
-
-          // 병합 셀 대응: 헤더 행의 각 셀을 직접 읽어 컬럼 인덱스 맵 생성
-          const TARGET_COLS = ["거래일자", "거래수량", "거래유종", "매입처", "특이사항", "매출처"];
-          const colIdx = {};
-          for (let c = range.s.c; c <= range.e.c; c++) {
-            const cell = ws[XLSX.utils.encode_cell({ r: headerRow, c })];
-            if (!cell) continue;
-            const v = String(cell.v).trim();
-            if (TARGET_COLS.includes(v)) colIdx[v] = c;
-          }
-
-          const getCell = (r, colName) => {
-            const c = colIdx[colName];
-            if (c === undefined) return "";
-            const cell = ws[XLSX.utils.encode_cell({ r, c })];
-            return cell ? cell.v : "";
-          };
+          const range = XLSX.utils.decode_range(ws["!ref"]);
 
           const unmappedSet = {};
           const rows = [];
-          let debugTotal = 0, debugQtyOk = 0, debugYjOk = 0;
-          const debugCols = `매핑된 컬럼: ${Object.keys(colIdx).join(", ")}`;
 
-          for (let r = headerRow + 1; r <= range.e.r; r++) {
-            debugTotal++;
-            const qtyRaw = String(getCell(r, "거래수량")).replace(/,/g, "").trim();
-            const qty = parseFloat(qtyRaw) || 0;
+          for (let r = 6; r <= range.e.r; r++) {
+            const get = (c) => {
+              const cell = ws[XLSX.utils.encode_cell({ r, c })];
+              return cell ? cell.v : "";
+            };
+            const qty = parseFloat(get(16)) || 0;
             if (qty <= 0) continue;
-            debugQtyOk++;
-            const yj = YUJONG_MAP[String(getCell(r, "거래유종")).trim()];
+            const yj = YUJONG_MAP[(String(get(13)) || "").trim()];
             if (!yj) continue;
-            debugYjOk++;
-            const maip = String(getCell(r, "매입처")).trim();
-            const teuk = String(getCell(r, "특이사항")).trim();
+            const maip = String(get(5) || "").trim();
+            const teuk = String(get(44) || "").trim();
             const dg = mapDG(maip, teuk, jiyeok, learned);
-            const dv = getCell(r, "거래일자");
+            const dv = get(0);
             let ds;
-            if (dv instanceof Date) {
-              ds = dv.toISOString().substring(0, 10);
-            } else if (typeof dv === "number") {
-              const epoch = Math.round((dv - 25569) * 86400000);
-              ds = new Date(epoch).toISOString().substring(0, 10);
+            if (typeof dv === "number") {
+              ds = new Date(Math.round((dv - 25569) * 86400 * 1000)).toISOString().substring(0, 10);
             } else {
               ds = String(dv).substring(0, 10);
             }
             if (!dg) {
               if (!unmappedSet[maip]) unmappedSet[maip] = { count: 0, samples: [], teuk };
               unmappedSet[maip].count++;
-              if (unmappedSet[maip].samples.length < 3) unmappedSet[maip].samples.push(String(getCell(r, "매출처")));
+              if (unmappedSet[maip].samples.length < 3) unmappedSet[maip].samples.push(String(get(7)));
             }
             rows.push({ date: ds, dg, jiyeok, yj, qty, maip, teuk });
           }
@@ -222,8 +199,6 @@ export default function SalesReport() {
               range: dates.length ? `${dates[0]} ~ ${dates[dates.length - 1]}` : "-",
               count: rows.length,
               unmapped: Object.keys(unmappedSet).length,
-              debug: `전체 ${debugTotal}행 / qty>0: ${debugQtyOk} / 유종매핑: ${debugYjOk}`,
-              debugCols,
             },
           }));
 
@@ -594,8 +569,6 @@ function DropZone({ jiyeok, state, info, inputId, onFile }) {
             <div style={{ fontSize: 11, color: "#3B6D11", marginBottom: 4 }}>{info.range}</div>
             <span style={badgeStyle("ok")}>{info.count.toLocaleString()}건</span>
             {info.unmapped > 0 && <span style={{ ...badgeStyle("warn"), marginLeft: 4 }}>미매핑 {info.unmapped}종</span>}
-            {info.debug && <div style={{ fontSize: 10, color: "#888", marginTop: 4 }}>{info.debug}</div>}
-            {info.debugCols && <div style={{ fontSize: 10, color: "#aaa", marginTop: 2, wordBreak: "break-all" }}>컬럼: {info.debugCols}</div>}
           </>
         ) : (
           <>
