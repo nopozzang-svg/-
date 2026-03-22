@@ -933,7 +933,7 @@
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 16px;
-  padding: 20px;
+  padding: 14px 16px;
   margin-bottom: 16px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
@@ -943,8 +943,8 @@
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
 .mops-title {
@@ -1022,13 +1022,13 @@
 .mops-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .mops-th {
   text-align: right;
-  padding: 8px 12px;
-  font-size: 11px;
+  padding: 6px 8px;
+  font-size: 10px;
   font-weight: 600;
   color: #6b7280;
   background: #f9fafb;
@@ -1037,29 +1037,34 @@
   line-height: 1.4;
 }
 .mops-th-fuel { text-align: left; }
-.mops-th-accent { color: #7c3aed; background: rgba(124,58,237,0.04); padding-right: 4px; }
+.mops-th-center { text-align: center; }
+.mops-th-accent { color: #7c3aed; background: rgba(124,58,237,0.04); }
 .mops-th-sub { font-size: 9px; font-weight: 400; color: #9ca3af; }
 
 .mops-tr:nth-child(odd) { background: #fafafa; }
 
 .mops-td {
-  padding: 10px 12px;
+  padding: 7px 8px;
   border-bottom: 1px solid #f3f4f6;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-size: 11px;
   text-align: right;
   color: #111827;
 }
 .mops-td-fuel {
   text-align: left;
   font-family: inherit;
+  font-size: 11px;
   font-weight: 600;
   color: #374151;
 }
 .mops-td-projected {
   color: #7c3aed;
   font-weight: 600;
-  padding-right: 4px;
+}
+.mops-td-rowdiff {
+  background: #f5f3ff;
+  color: #7c3aed;
 }
 .mops-th-diff {
   background: #f5f3ff;
@@ -1068,8 +1073,8 @@
 }
 .mops-td-diff {
   text-align: right;
-  font-size: 13px;
-  padding-left: 4px;
+  font-size: 11px;
+  background: #faf8ff;
 }
 
 .mops-formula-note {

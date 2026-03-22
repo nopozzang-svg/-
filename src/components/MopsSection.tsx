@@ -33,48 +33,26 @@ function fmt(v: number | null | undefined): string {
   return Math.round(v).toLocaleString("ko-KR") + "원/ℓ";
 }
 
-/** 단일 결과 행 */
-function ResultRow({
-  label,
-  result,
-  monthlyRef,
-}: {
-  label:      string;
-  result:     MopsResult;
-  monthlyRef: number | null;
-}) {
-  const diff = (result.projectedMonthlyAverage != null && monthlyRef != null)
-    ? Math.round(result.projectedMonthlyAverage) - Math.round(monthlyRef)
-    : null;
-  const up = diff != null && diff > 0;
-
+/** 당월比 셀 렌더링 */
+function renderDiff(result: MopsResult) {
+  const diff =
+    result.projectedMonthlyAverage != null && result.monthlyAverage != null
+      ? Math.round(result.projectedMonthlyAverage) - Math.round(result.monthlyAverage)
+      : null;
+  if (diff == null || Math.abs(diff) < 1) return <span>—</span>;
+  const up = diff > 0;
   return (
-    <tr className="mops-tr">
-      <td className="mops-td mops-td-fuel">{label}</td>
-      <td className="mops-td mops-td-num" style={{ fontWeight: 600 }}>
-        {fmt(result.daily)}
-      </td>
-      <td className="mops-td mops-td-num">
-        {fmt(result.monthlyAverage)}
-      </td>
-      <td className="mops-td mops-td-num mops-td-projected">
-        {fmt(result.projectedMonthlyAverage)}
-      </td>
-      <td className="mops-td mops-td-num mops-td-diff">
-        {diff == null || Math.abs(diff) < 1
-          ? "—"
-          : <span style={{ color: up ? "#ef4444" : "#2563eb", fontWeight: 600 }}>
-              {up ? "▲" : "▼"} {Math.abs(diff).toLocaleString("ko-KR")}원
-            </span>
-        }
-      </td>
-    </tr>
+    <span style={{ color: up ? "#ef4444" : "#2563eb", fontWeight: 600 }}>
+      {up ? "▲" : "▼"} {Math.abs(diff).toLocaleString("ko-KR")}원
+    </span>
   );
 }
 
+const EMPTY: MopsResult = { daily: null, monthlyAverage: null, projectedMonthlyAverage: null };
+
 export default function MopsSection({ intlData, onOpenSettings }: Props) {
-  const monthKey   = getCurrentMonthKey();
-  const constants  = getCurrentMonthConstants(monthKey);
+  const monthKey  = getCurrentMonthKey();
+  const constants = getCurrentMonthConstants(monthKey);
 
   // KST 기준 날짜 정보
   const { year, month, today } = useMemo(() => {
@@ -86,7 +64,9 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
     };
   }, []);
 
-  // 계산 결과 (intlData 또는 constants 변경 시 재계산)
+  const remainingWeekdays = getRemainingWeekdays(year, month, today);
+
+  // 계산 결과
   const results = useMemo((): MopsAllProducts | null => {
     if (!constants || !intlData) return null;
 
@@ -95,10 +75,8 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       history = JSON.parse(localStorage.getItem(INTL_HISTORY_KEY) || "{}");
     } catch { /* ignore */ }
 
-    // 국제지표 calcMonthStats 와 동일한 방식으로 추출
-    const exchValues       = extractActualMonthlyValues(history, "exch",    year, month);
-    const remainingWeekdays = getRemainingWeekdays(year, month, today);
-    const dailyExch        = intlData.exch?.current ?? null;
+    const exchValues = extractActualMonthlyValues(history, "exch", year, month);
+    const dailyExch  = intlData.exch?.current ?? null;
 
     const compute = (
       productField: string,
@@ -115,14 +93,14 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       });
 
     return {
-      gasoline: compute("mopsGas",     intlData.petro?.mopsGasoline?.current, "gasoline"),
-      diesel:   compute("mopsDiesel",  intlData.petro?.mopsDiesel?.current,   "diesel"),
-      kerosene: compute("mopsKero",    intlData.petro?.mopsKerosene?.current,  "kerosene"),
+      gasoline: compute("mopsGas",    intlData.petro?.mopsGasoline?.current, "gasoline"),
+      diesel:   compute("mopsDiesel", intlData.petro?.mopsDiesel?.current,   "diesel"),
+      kerosene: compute("mopsKero",   intlData.petro?.mopsKerosene?.current,  "kerosene"),
     };
-  }, [intlData, constants, year, month, today]);
+  }, [intlData, constants, year, month, today, remainingWeekdays]);
 
   const missingConstants = !constants;
-  const showWarning      = missingConstants && today <= 5; // 월 1~5일에만 배너 표시
+  const showWarning      = missingConstants && today <= 5;
 
   const updatedAt = constants?.updatedAt
     ? new Date(constants.updatedAt).toLocaleString("ko-KR", {
@@ -131,11 +109,9 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       })
     : null;
 
-  const rows: { key: keyof MopsAllProducts; label: string }[] = [
-    { key: "gasoline", label: "무연" },
-    { key: "diesel",   label: "경유" },
-    { key: "kerosene", label: "등유" },
-  ];
+  const gas  = results?.gasoline ?? EMPTY;
+  const dsl  = results?.diesel   ?? EMPTY;
+  const kero = results?.kerosene ?? EMPTY;
 
   return (
     <div className="mops-section">
@@ -191,34 +167,61 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
         </div>
       )}
 
-      {/* ── 결과 테이블 ── */}
+      {/* ── 결과 테이블 (전치 레이아웃: 행=지표, 열=유종) ── */}
       {!missingConstants && (
         <div className="mops-table-wrap">
           <table className="mops-table">
             <thead>
               <tr>
-                <th className="mops-th mops-th-fuel">유종</th>
-                <th className="mops-th">데일리<br /><span className="mops-th-sub">오늘</span></th>
-                <th className="mops-th">당월 평균<br /><span className="mops-th-sub">실적 기준</span></th>
-                <th className="mops-th mops-th-accent">당월 예측 평균<br /><span className="mops-th-sub">잔여 {getRemainingWeekdays(year, month, today)}평일 유지 가정</span></th>
-                <th className="mops-th mops-th-diff">당월比<br /><span className="mops-th-sub">예측 − 평균</span></th>
+                <th className="mops-th mops-th-fuel">구분</th>
+                <th className="mops-th mops-th-center">무연</th>
+                <th className="mops-th mops-th-center">경유</th>
+                <th className="mops-th mops-th-center">등유</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ key, label }) => (
-                <ResultRow
-                  key={key}
-                  label={label}
-                  result={results?.[key] ?? { daily: null, monthlyAverage: null, projectedMonthlyAverage: null }}
-                  monthlyRef={results?.[key]?.monthlyAverage ?? null}
-                />
-              ))}
+              {/* 데일리 */}
+              <tr className="mops-tr">
+                <td className="mops-td mops-td-fuel">
+                  데일리<br /><span className="mops-th-sub">오늘</span>
+                </td>
+                <td className="mops-td" style={{ fontWeight: 600 }}>{fmt(gas.daily)}</td>
+                <td className="mops-td" style={{ fontWeight: 600 }}>{fmt(dsl.daily)}</td>
+                <td className="mops-td" style={{ fontWeight: 600 }}>{fmt(kero.daily)}</td>
+              </tr>
+              {/* 당월 평균 */}
+              <tr className="mops-tr">
+                <td className="mops-td mops-td-fuel">
+                  당월 평균<br /><span className="mops-th-sub">실적 기준</span>
+                </td>
+                <td className="mops-td">{fmt(gas.monthlyAverage)}</td>
+                <td className="mops-td">{fmt(dsl.monthlyAverage)}</td>
+                <td className="mops-td">{fmt(kero.monthlyAverage)}</td>
+              </tr>
+              {/* 당월 예측 평균 */}
+              <tr className="mops-tr">
+                <td className="mops-td mops-td-fuel mops-td-projected">
+                  당월 예측<br /><span className="mops-th-sub">잔여 {remainingWeekdays}평일 가정</span>
+                </td>
+                <td className="mops-td mops-td-projected">{fmt(gas.projectedMonthlyAverage)}</td>
+                <td className="mops-td mops-td-projected">{fmt(dsl.projectedMonthlyAverage)}</td>
+                <td className="mops-td mops-td-projected">{fmt(kero.projectedMonthlyAverage)}</td>
+              </tr>
+              {/* 당월比 */}
+              <tr className="mops-tr">
+                <td className="mops-td mops-td-fuel mops-td-rowdiff">
+                  당월比<br /><span className="mops-th-sub">예측 − 평균</span>
+                </td>
+                <td className="mops-td mops-td-diff">{renderDiff(gas)}</td>
+                <td className="mops-td mops-td-diff">{renderDiff(dsl)}</td>
+                <td className="mops-td mops-td-diff">{renderDiff(kero)}</td>
+              </tr>
             </tbody>
           </table>
 
           {/* 계산식 참고 */}
           <div className="mops-formula-note">
-            { "[(제품가 + 프리미엄 + 관세) ÷ 158.984] × 환율 + 수입부과금 + 세금" } × 1.1
+            {"[(제품가 + 프리미엄 + 관세) ÷ 158.984] × 환율 + 수입부과금 + 세금"} × 1.1
           </div>
         </div>
       )}
