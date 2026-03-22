@@ -156,9 +156,9 @@ export default function SalesReport() {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
-          const wb = XLSX.read(e.target.result, { type: "array", cellDates: true });
+          const wb = XLSX.read(e.target.result, { type: "array", cellDates: false });
           const ws = wb.Sheets[wb.SheetNames[0]];
-          const data = XLSX.utils.sheet_to_json(ws, { range: findHeaderRow(ws), defval: "" });
+          const data = XLSX.utils.sheet_to_json(ws, { range: findHeaderRow(ws), defval: "", raw: true });
 
           const unmappedSet = {};
           const rows = [];
@@ -172,7 +172,16 @@ export default function SalesReport() {
             const teuk = (row["특이사항"] || "").trim();
             const dg = mapDG(maip, teuk, jiyeok, learned);
             const dv = row["거래일자"];
-            const ds = dv instanceof Date ? dv.toISOString().substring(0, 10) : String(dv).substring(0, 10);
+            let ds;
+            if (dv instanceof Date) {
+              ds = dv.toISOString().substring(0, 10);
+            } else if (typeof dv === "number") {
+              // .xls 시리얼 날짜 → YYYY-MM-DD
+              const epoch = Math.round((dv - 25569) * 86400000);
+              ds = new Date(epoch).toISOString().substring(0, 10);
+            } else {
+              ds = String(dv).substring(0, 10);
+            }
             if (!dg) {
               if (!unmappedSet[maip]) unmappedSet[maip] = { count: 0, samples: [], teuk };
               unmappedSet[maip].count++;
@@ -552,6 +561,8 @@ function DropZone({ jiyeok, state, info, inputId, onFile }) {
       >
         {state === "loading" ? (
           <div style={{ fontSize: 11, color: "#888" }}>⏳ 처리 중...</div>
+        ) : state === "error" ? (
+          <div style={{ fontSize: 11, color: "#ef4444" }}>❌ 파일 파싱 실패. 형식을 확인해주세요.</div>
         ) : isLoaded && info ? (
           <>
             <div style={{ fontSize: 12, fontWeight: 500, color: "#3B6D11", marginBottom: 2 }}>{info.filename}</div>
