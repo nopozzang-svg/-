@@ -36,8 +36,8 @@ function fmt(v: number | null | undefined): string {
 /** 당월比 셀 렌더링 */
 function renderDiff(result: MopsResult) {
   const diff =
-    result.projectedMonthlyAverage != null && result.monthlyAverage != null
-      ? Math.round(result.projectedMonthlyAverage) - Math.round(result.monthlyAverage)
+    result.daily != null && result.projectedMonthlyAverage != null
+      ? Math.round(result.daily) - Math.round(result.projectedMonthlyAverage)
       : null;
   if (diff == null || Math.abs(diff) < 1) return <span>—</span>;
   const up = diff > 0;
@@ -210,7 +210,7 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
               {/* 당월比 */}
               <tr className="mops-tr">
                 <td className="mops-td mops-td-fuel mops-td-rowdiff">
-                  당월比<br /><span className="mops-th-sub">예측 − 평균</span>
+                  당월比<br /><span className="mops-th-sub">데일리 − 당월예측</span>
                 </td>
                 <td className="mops-td mops-td-diff">{renderDiff(gas)}</td>
                 <td className="mops-td mops-td-diff">{renderDiff(dsl)}</td>
