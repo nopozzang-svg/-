@@ -27,10 +27,10 @@ interface Props {
   onOpenSettings: () => void;
 }
 
-/** 숫자 표시 헬퍼 — #,###원/ℓ */
+/** 숫자 표시 헬퍼 — #,###원 */
 function fmt(v: number | null | undefined): string {
   if (v == null) return "—";
-  return Math.round(v).toLocaleString("ko-KR") + "원/ℓ";
+  return Math.round(v).toLocaleString("ko-KR") + "원";
 }
 
 /** 당월比 셀 렌더링 */
@@ -120,7 +120,7 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       <div className="mops-header">
         <div>
           <span className="mops-title">국내 환산 MOPS</span>
-          <span className="mops-subtitle"> · 원/L · 부가세 포함</span>
+          <span className="mops-subtitle"> · 원 · 부가세 포함</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {updatedAt && (
