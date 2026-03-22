@@ -162,12 +162,17 @@ export default function SalesReport() {
 
           const unmappedSet = {};
           const rows = [];
+          let debugTotal = 0, debugQtyOk = 0, debugYjOk = 0;
 
           data.forEach((row) => {
-            const qty = parseFloat(row["거래수량"]) || 0;
+            debugTotal++;
+            const qtyRaw = String(row["거래수량"] ?? "").replace(/,/g, "").trim();
+            const qty = parseFloat(qtyRaw) || 0;
             if (qty <= 0) return;
-            const yj = YUJONG_MAP[row["거래유종"]];
+            debugQtyOk++;
+            const yj = YUJONG_MAP[(row["거래유종"] ?? "").trim()];
             if (!yj) return;
+            debugYjOk++;
             const maip = (row["매입처"] || "").trim();
             const teuk = (row["특이사항"] || "").trim();
             const dg = mapDG(maip, teuk, jiyeok, learned);
@@ -199,6 +204,7 @@ export default function SalesReport() {
               range: dates.length ? `${dates[0]} ~ ${dates[dates.length - 1]}` : "-",
               count: rows.length,
               unmapped: Object.keys(unmappedSet).length,
+              debug: `전체 ${debugTotal}행 / qty>0: ${debugQtyOk} / 유종매핑: ${debugYjOk}`,
             },
           }));
 
@@ -569,6 +575,7 @@ function DropZone({ jiyeok, state, info, inputId, onFile }) {
             <div style={{ fontSize: 11, color: "#3B6D11", marginBottom: 4 }}>{info.range}</div>
             <span style={badgeStyle("ok")}>{info.count.toLocaleString()}건</span>
             {info.unmapped > 0 && <span style={{ ...badgeStyle("warn"), marginLeft: 4 }}>미매핑 {info.unmapped}종</span>}
+            {info.debug && <div style={{ fontSize: 10, color: "#888", marginTop: 4 }}>{info.debug}</div>}
           </>
         ) : (
           <>
