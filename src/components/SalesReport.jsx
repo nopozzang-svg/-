@@ -163,6 +163,7 @@ export default function SalesReport() {
           const unmappedSet = {};
           const rows = [];
           let debugTotal = 0, debugQtyOk = 0, debugYjOk = 0;
+          const debugCols = data.length > 0 ? Object.keys(data[0]).slice(0, 8).join(" | ") : "없음";
 
           data.forEach((row) => {
             debugTotal++;
@@ -205,6 +206,7 @@ export default function SalesReport() {
               count: rows.length,
               unmapped: Object.keys(unmappedSet).length,
               debug: `전체 ${debugTotal}행 / qty>0: ${debugQtyOk} / 유종매핑: ${debugYjOk}`,
+              debugCols,
             },
           }));
 
@@ -576,6 +578,7 @@ function DropZone({ jiyeok, state, info, inputId, onFile }) {
             <span style={badgeStyle("ok")}>{info.count.toLocaleString()}건</span>
             {info.unmapped > 0 && <span style={{ ...badgeStyle("warn"), marginLeft: 4 }}>미매핑 {info.unmapped}종</span>}
             {info.debug && <div style={{ fontSize: 10, color: "#888", marginTop: 4 }}>{info.debug}</div>}
+            {info.debugCols && <div style={{ fontSize: 10, color: "#aaa", marginTop: 2, wordBreak: "break-all" }}>컬럼: {info.debugCols}</div>}
           </>
         ) : (
           <>
