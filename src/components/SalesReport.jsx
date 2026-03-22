@@ -158,31 +158,48 @@ export default function SalesReport() {
         try {
           const wb = XLSX.read(e.target.result, { type: "array", cellDates: false });
           const ws = wb.Sheets[wb.SheetNames[0]];
-          const data = XLSX.utils.sheet_to_json(ws, { range: findHeaderRow(ws), defval: "", raw: true });
+          const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+          const headerRow = findHeaderRow(ws);
+
+          // 병합 셀 대응: 헤더 행의 각 셀을 직접 읽어 컬럼 인덱스 맵 생성
+          const TARGET_COLS = ["거래일자", "거래수량", "거래유종", "매입처", "특이사항", "매출처"];
+          const colIdx = {};
+          for (let c = range.s.c; c <= range.e.c; c++) {
+            const cell = ws[XLSX.utils.encode_cell({ r: headerRow, c })];
+            if (!cell) continue;
+            const v = String(cell.v).trim();
+            if (TARGET_COLS.includes(v)) colIdx[v] = c;
+          }
+
+          const getCell = (r, colName) => {
+            const c = colIdx[colName];
+            if (c === undefined) return "";
+            const cell = ws[XLSX.utils.encode_cell({ r, c })];
+            return cell ? cell.v : "";
+          };
 
           const unmappedSet = {};
           const rows = [];
           let debugTotal = 0, debugQtyOk = 0, debugYjOk = 0;
-          const debugCols = data.length > 0 ? Object.keys(data[0]).slice(0, 8).join(" | ") : "없음";
+          const debugCols = `매핑된 컬럼: ${Object.keys(colIdx).join(", ")}`;
 
-          data.forEach((row) => {
+          for (let r = headerRow + 1; r <= range.e.r; r++) {
             debugTotal++;
-            const qtyRaw = String(row["거래수량"] ?? "").replace(/,/g, "").trim();
+            const qtyRaw = String(getCell(r, "거래수량")).replace(/,/g, "").trim();
             const qty = parseFloat(qtyRaw) || 0;
-            if (qty <= 0) return;
+            if (qty <= 0) continue;
             debugQtyOk++;
-            const yj = YUJONG_MAP[(row["거래유종"] ?? "").trim()];
-            if (!yj) return;
+            const yj = YUJONG_MAP[String(getCell(r, "거래유종")).trim()];
+            if (!yj) continue;
             debugYjOk++;
-            const maip = (row["매입처"] || "").trim();
-            const teuk = (row["특이사항"] || "").trim();
+            const maip = String(getCell(r, "매입처")).trim();
+            const teuk = String(getCell(r, "특이사항")).trim();
             const dg = mapDG(maip, teuk, jiyeok, learned);
-            const dv = row["거래일자"];
+            const dv = getCell(r, "거래일자");
             let ds;
             if (dv instanceof Date) {
               ds = dv.toISOString().substring(0, 10);
             } else if (typeof dv === "number") {
-              // .xls 시리얼 날짜 → YYYY-MM-DD
               const epoch = Math.round((dv - 25569) * 86400000);
               ds = new Date(epoch).toISOString().substring(0, 10);
             } else {
@@ -191,10 +208,10 @@ export default function SalesReport() {
             if (!dg) {
               if (!unmappedSet[maip]) unmappedSet[maip] = { count: 0, samples: [], teuk };
               unmappedSet[maip].count++;
-              if (unmappedSet[maip].samples.length < 3) unmappedSet[maip].samples.push(row["매출처"] || "");
+              if (unmappedSet[maip].samples.length < 3) unmappedSet[maip].samples.push(String(getCell(r, "매출처")));
             }
             rows.push({ date: ds, dg, jiyeok, yj, qty, maip, teuk });
-          });
+          }
 
           const dates = rows.map((r) => r.date).filter(Boolean).sort();
           setDzState((s) => ({ ...s, [jiyeok]: "done" }));
