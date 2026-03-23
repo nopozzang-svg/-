@@ -40,14 +40,17 @@ const COL_LABELS = { PG: "고급휘발유", G: "휘발유", K: "등유", D: "경
 // ── 유틸 ────────────────────────────────────────────────────
 const stripNum = (dg) => (dg || "").replace(/^\d+\./, "").trim();
 
-const fmtKL = (v) => (v ? (v / 1000).toFixed(1) : "-");
+const fmtKL = (v) => (v ? Math.round(v / 1000).toLocaleString() : "-");
 const fmtKLint = (v) => (v ? Math.round(v / 1000).toLocaleString() : "-");
 
-function mapDG(maip, teuk, jiyeok, learned) {
+function mapDG(maip, teuk, jiyeok, learned, jeoyuso, jeojangso) {
   const m = (maip || "").trim();
   const t = (teuk || "").trim().toLowerCase();
+  const yu = (jeoyuso || "").trim();
+  const jo = (jeojangso || "").trim();
   if (learned[m]) return learned[m];
   if (m.includes("원일유통")) {
+    if (yu.includes("평택한일") || jo.includes("평택한일")) return "원일유통_평택한일";
     if (jiyeok === "영남권") return "12.원일유통 영남권";
     if (t.includes("hd") || t.includes("현대")) return "04.원일유통_현대";
     return "03.원일유통_중부본부";
@@ -191,7 +194,9 @@ export default function SalesReport() {
             if (!yj) continue;
             const maip = String(get(5) || "").trim();
             const teuk = String(get(44) || "").trim();
-            const dg = mapDG(maip, teuk, jiyeok, learned);
+            const jeoyuso = String(get(31) || "").trim();
+            const jeojangso = String(get(29) || "").trim();
+            const dg = mapDG(maip, teuk, jiyeok, learned, jeoyuso, jeojangso);
             const dv = get(0);
             let ds;
             if (typeof dv === "number") {

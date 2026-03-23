@@ -46,11 +46,14 @@ const MAIP_DG_EXACT = {
   "주식회사 세일 서울지점 (매입)": "세일서울지점",
 };
 
-function mapDG(maip, teuk, jiyeok) {
+function mapDG(maip, teuk, jiyeok, jeoyuso, jeojangso) {
   const m = (maip || "").trim();
   const t = (teuk || "").trim().toLowerCase();
+  const yu = (jeoyuso || "").trim();
+  const jo = (jeojangso || "").trim();
   if (MAIP_DG_EXACT[m]) return MAIP_DG_EXACT[m];
   if (m.includes("원일유통")) {
+    if (yu.includes("평택한일") || jo.includes("평택한일")) return "원일유통_평택한일";
     if (jiyeok === "영남권") return "12.원일유통 영남권";
     if (t.includes("hd") || t.includes("현대")) return "04.원일유통_현대";
     return "03.원일유통_중부본부";
@@ -94,7 +97,9 @@ function parseFile(filePath, jiyeok, minDate, maxDate) {
     if (maxDate && ds > maxDate) continue;
     const maip = String(get(5) || "").trim();
     const teuk = String(get(44) || "").trim();
-    const dg = mapDG(maip, teuk, jiyeok);
+    const jeoyuso = String(get(31) || "").trim();
+    const jeojangso = String(get(29) || "").trim();
+    const dg = mapDG(maip, teuk, jiyeok, jeoyuso, jeojangso);
     if (!dg) continue;
     rows.push({ date: ds, dg, jiyeok, yj, qty, maip, teuk });
   }
