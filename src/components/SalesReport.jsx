@@ -50,7 +50,7 @@ function mapDG(maip, teuk, jiyeok, learned, jeoyuso, jeojangso) {
   const jo = (jeojangso || "").trim();
   if (learned[m]) return learned[m];
   if (m.includes("원일유통")) {
-    if (yu.includes("평택한일") || jo.includes("평택한일")) return "원일유통_평택한일";
+    if (yu.includes("평택한일") || yu.includes("한일평택") || jo.includes("평택한일") || jo.includes("한일평택")) return "원일유통_평택한일";
     if (jiyeok === "영남권") return "12.원일유통 영남권";
     if (t.includes("hd") || t.includes("현대")) return "04.원일유통_현대";
     return "03.원일유통_중부본부";
@@ -304,10 +304,9 @@ export default function SalesReport() {
     ];
     await Store.set(STORAGE_KEY, JSON.stringify(newLocal));
 
-    // 화면에는 history + localStorage 병합해서 표시
-    const histRecs = records.filter((r) => !histMax || r.date <= histMax); // history 부분 유지
+    // 화면: 기존 records에서 해당 지역+날짜범위만 교체 (수도권/영남권 각각 보존)
     const merged = [
-      ...histRecs.filter((r) => r.jiyeok !== jiyeok || r.date < minDate || r.date > maxDate),
+      ...records.filter((r) => r.jiyeok !== jiyeok || r.date < minDate || r.date > maxDate),
       ...valid,
     ];
     setRecords(merged);

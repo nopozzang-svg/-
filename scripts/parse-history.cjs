@@ -53,7 +53,7 @@ function mapDG(maip, teuk, jiyeok, jeoyuso, jeojangso) {
   if (MAIP_DG_EXACT[m]) return MAIP_DG_EXACT[m];
 
   if (m.includes("원일유통")) {
-    if (yu.includes("평택한일") || jo.includes("평택한일")) return "원일유통_평택한일";
+    if (yu.includes("평택한일") || yu.includes("한일평택") || jo.includes("평택한일") || jo.includes("한일평택")) return "원일유통_평택한일";
     if (jiyeok === "영남권") return "12.원일유통 영남권";
     if (t.includes("hd") || t.includes("현대")) return "04.원일유통_현대";
     return "03.원일유통_중부본부";
