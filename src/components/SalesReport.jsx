@@ -102,6 +102,31 @@ const Store = {
   },
 };
 
+// ── Supabase 당월 데이터 helper ───────────────────────────────
+const SUPA_URL = "https://ozxjyzhndrgyvtewlkac.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im96eGp5emhuZHJneXZ0ZXdsa2FjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5OTgyNjcsImV4cCI6MjA4NzU3NDI2N30.ESPSK3MZeXMf5gK6ajT0eeNedqxiuniS3zRFbuyzPu4";
+const supaHeaders = { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json" };
+
+const SupaCurrent = {
+  async getAll() {
+    try {
+      const res = await fetch(`${SUPA_URL}/rest/v1/sales_current?select=jiyeok,records`, { headers: supaHeaders });
+      if (!res.ok) return [];
+      const rows = await res.json();
+      return rows.flatMap((r) => r.records || []);
+    } catch { return []; }
+  },
+  async upsert(jiyeok, records) {
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/sales_current`, {
+        method: "POST",
+        headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify({ jiyeok, records, updated_at: new Date().toISOString() }),
+      });
+    } catch {}
+  },
+};
+
 // ── 피벗 계산 ────────────────────────────────────────────────
 function buildPivot(records) {
   const pivot = {};
@@ -148,16 +173,14 @@ export default function SalesReport() {
         if (res.ok) historyRecs = await res.json();
       } catch {}
 
-      // 2) localStorage 당월 업로드 데이터 로드
-      const rRaw = await Store.get(STORAGE_KEY);
-      const localRecs = rRaw ? JSON.parse(rRaw) : [];
+      // 2) Supabase 당월 데이터 로드 (모든 기기 공유)
+      const supaRecs = await SupaCurrent.getAll();
 
-      // 3) 병합: history의 마지막 날짜 이후 localStorage 데이터만 추가
-      //    (history와 localStorage 날짜 범위가 겹치면 history 우선)
+      // 3) 병합: history 이후 날짜의 Supabase 데이터만 추가
       const histDates = historyRecs.map((r) => r.date).filter(Boolean).sort();
       const histMax = histDates.length ? histDates[histDates.length - 1] : "";
-      const localOnly = localRecs.filter((r) => !histMax || r.date > histMax);
-      const merged = [...historyRecs, ...localOnly];
+      const currentOnly = supaRecs.filter((r) => !histMax || r.date > histMax);
+      const merged = [...historyRecs, ...currentOnly];
 
       setRecords(merged);
       if (merged.length) {
@@ -284,26 +307,12 @@ export default function SalesReport() {
     const minDate = uploadedDates[0];
     const maxDate = uploadedDates[uploadedDates.length - 1];
 
-    // localStorage에는 당월(history에 없는) 데이터만 저장
-    // history의 날짜 범위를 가져와서 그 이후 데이터만 localStorage에 보관
-    let histMax = "";
-    try {
-      const res = await fetch("/sales_history.json");
-      if (res.ok) {
-        const hist = await res.json();
-        const hDates = hist.map((r) => r.date).filter(Boolean).sort();
-        histMax = hDates.length ? hDates[hDates.length - 1] : "";
-      }
-    } catch {}
-
-    // 기존 localStorage에서 해당 지역+날짜범위 제거 후 새 데이터 추가
-    const prevRaw = await Store.get(STORAGE_KEY);
-    const prevLocal = prevRaw ? JSON.parse(prevRaw) : [];
-    const newLocal = [
-      ...prevLocal.filter((r) => r.jiyeok !== jiyeok || r.date < minDate || r.date > maxDate),
-      ...valid.filter((r) => !histMax || r.date > histMax),
-    ];
-    await Store.set(STORAGE_KEY, JSON.stringify(newLocal));
+    // Supabase: 해당 지역의 현재 데이터를 새 데이터로 교체 (모든 기기 공유)
+    const supaAll = await SupaCurrent.getAll();
+    const supaOther = supaAll.filter((r) => r.jiyeok !== jiyeok); // 다른 지역 보존
+    const newSupaRecs = [...supaOther, ...valid];
+    // jiyeok별로 분리해서 upsert
+    await SupaCurrent.upsert(jiyeok, valid);
 
     // 화면: 기존 records에서 해당 지역+날짜범위만 교체 (수도권/영남권 각각 보존)
     const merged = [
