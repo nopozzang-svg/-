@@ -221,6 +221,7 @@ export default function SalesReport() {
               range: dates.length ? `${dates[0]} ~ ${dates[dates.length - 1]}` : "-",
               count: rows.length,
               unmapped: Object.keys(unmappedSet).length,
+              uploadedAt: new Date().toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }),
             },
           }));
 
@@ -616,7 +617,8 @@ function DropZone({ jiyeok, state, info, inputId, onFile }) {
         ) : isLoaded && info ? (
           <>
             <div style={{ fontSize: 12, fontWeight: 500, color: "#3B6D11", marginBottom: 2 }}>{info.filename}</div>
-            <div style={{ fontSize: 11, color: "#3B6D11", marginBottom: 4 }}>{info.range}</div>
+            <div style={{ fontSize: 11, color: "#3B6D11", marginBottom: 1 }}>{info.range}</div>
+            <div style={{ fontSize: 11, color: "#6B9B3A", marginBottom: 4 }}>{info.uploadedAt} 업로드</div>
             <span style={badgeStyle("ok")}>{info.count.toLocaleString()}건</span>
             {info.unmapped > 0 && <span style={{ ...badgeStyle("warn"), marginLeft: 4 }}>미매핑 {info.unmapped}종</span>}
           </>
