@@ -135,14 +135,30 @@ export default function SalesReport() {
   // ── 초기 로드 ──────────────────────────────────────────────
   useEffect(() => {
     (async () => {
-      const rRaw = await Store.get(STORAGE_KEY);
       const lRaw = await Store.get(LEARNED_KEY);
-      const recs = rRaw ? JSON.parse(rRaw) : [];
-      const lrn = lRaw ? JSON.parse(lRaw) : {};
-      setRecords(recs);
-      setLearned(lrn);
-      if (recs.length) {
-        const dates = recs.map((r) => r.date).filter(Boolean).sort();
+      setLearned(lRaw ? JSON.parse(lRaw) : {});
+
+      // 1) 확정 history JSON 로드 (public/sales_history.json)
+      let historyRecs = [];
+      try {
+        const res = await fetch("/sales_history.json");
+        if (res.ok) historyRecs = await res.json();
+      } catch {}
+
+      // 2) localStorage 당월 업로드 데이터 로드
+      const rRaw = await Store.get(STORAGE_KEY);
+      const localRecs = rRaw ? JSON.parse(rRaw) : [];
+
+      // 3) 병합: history의 마지막 날짜 이후 localStorage 데이터만 추가
+      //    (history와 localStorage 날짜 범위가 겹치면 history 우선)
+      const histDates = historyRecs.map((r) => r.date).filter(Boolean).sort();
+      const histMax = histDates.length ? histDates[histDates.length - 1] : "";
+      const localOnly = localRecs.filter((r) => !histMax || r.date > histMax);
+      const merged = [...historyRecs, ...localOnly];
+
+      setRecords(merged);
+      if (merged.length) {
+        const dates = merged.map((r) => r.date).filter(Boolean).sort();
         setDateFrom(dates[0]);
         setDateTo(dates[dates.length - 1]);
       }
@@ -157,7 +173,8 @@ export default function SalesReport() {
       reader.onload = (e) => {
         try {
           const wb = XLSX.read(e.target.result, { type: "array", cellDates: false });
-          const ws = wb.Sheets[wb.SheetNames[0]];
+          const sheetName = wb.SheetNames.find((n) => n.includes(jiyeok)) ?? wb.SheetNames[0];
+          const ws = wb.Sheets[sheetName];
           const range = XLSX.utils.decode_range(ws["!ref"]);
 
           const unmappedSet = {};
@@ -257,9 +274,38 @@ export default function SalesReport() {
   // ── 저장 ───────────────────────────────────────────────────
   const applyAndSave = async (rows, jiyeok) => {
     const valid = rows.filter((r) => r.dg);
-    const merged = [...records.filter((r) => r.jiyeok !== jiyeok), ...valid];
+    const uploadedDates = valid.map((r) => r.date).filter(Boolean).sort();
+    const minDate = uploadedDates[0];
+    const maxDate = uploadedDates[uploadedDates.length - 1];
+
+    // localStorage에는 당월(history에 없는) 데이터만 저장
+    // history의 날짜 범위를 가져와서 그 이후 데이터만 localStorage에 보관
+    let histMax = "";
+    try {
+      const res = await fetch("/sales_history.json");
+      if (res.ok) {
+        const hist = await res.json();
+        const hDates = hist.map((r) => r.date).filter(Boolean).sort();
+        histMax = hDates.length ? hDates[hDates.length - 1] : "";
+      }
+    } catch {}
+
+    // 기존 localStorage에서 해당 지역+날짜범위 제거 후 새 데이터 추가
+    const prevRaw = await Store.get(STORAGE_KEY);
+    const prevLocal = prevRaw ? JSON.parse(prevRaw) : [];
+    const newLocal = [
+      ...prevLocal.filter((r) => r.jiyeok !== jiyeok || r.date < minDate || r.date > maxDate),
+      ...valid.filter((r) => !histMax || r.date > histMax),
+    ];
+    await Store.set(STORAGE_KEY, JSON.stringify(newLocal));
+
+    // 화면에는 history + localStorage 병합해서 표시
+    const histRecs = records.filter((r) => !histMax || r.date <= histMax); // history 부분 유지
+    const merged = [
+      ...histRecs.filter((r) => r.jiyeok !== jiyeok || r.date < minDate || r.date > maxDate),
+      ...valid,
+    ];
     setRecords(merged);
-    await Store.set(STORAGE_KEY, JSON.stringify(merged));
     const dates = merged.map((r) => r.date).filter(Boolean).sort();
     if (dates.length) { setDateFrom(dates[0]); setDateTo(dates[dates.length - 1]); }
     setTab("report");
