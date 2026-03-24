@@ -556,8 +556,8 @@ export default function SalesReport() {
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680, fontSize: 12 }}>
                   <thead>
                     <tr>
-                      {/* 대구분 헤더 - rowSpan=2, 가운데 정렬 */}
-                      <Th rowSpan={2} style={{ background: "#c8c8c8", textAlign: "center", verticalAlign: "middle", borderRight: "2px solid #888", borderBottom: "2px solid #888" }}>대구분</Th>
+                      {/* 대구분 헤더 - rowSpan=2, 가운데 정렬, sticky */}
+                      <Th rowSpan={2} style={{ background: "#c8c8c8", textAlign: "center", verticalAlign: "middle", borderRight: "2px solid #888", borderBottom: "2px solid #888", position: "sticky", left: 0, zIndex: 3 }}>대구분</Th>
                       {/* 영업1팀 그룹 헤더 */}
                       <Th colSpan={5} style={{ textAlign: "center", background: "#c8c8c8", borderLeft: "2px solid #888", borderRight: "2px solid #888", borderBottom: "1px solid #aaa" }}>영업1팀 (수도권)</Th>
                       {/* 영업2팀 그룹 헤더 */}
@@ -599,8 +599,8 @@ export default function SalesReport() {
                       const s2 = COLS.reduce((s,c)=>s+(t2[c]||0),0);
                       return (
                         <tr key={dg}>
-                          {/* 대구분 라벨 - 좌측 정렬 유지 */}
-                          <Td align="left" style={{ background: "#fafafa", borderRight: "2px solid #888", fontWeight: 500 }}>{stripNum(dg)}</Td>
+                          {/* 대구분 라벨 - 좌측 정렬 유지, sticky */}
+                          <Td align="left" style={{ background: "#fafafa", borderRight: "2px solid #888", fontWeight: 500, position: "sticky", left: 0, zIndex: 1 }}>{stripNum(dg)}</Td>
                           {/* 영업1팀 데이터 - 연블루 */}
                           {COLS.map((c,i)=>(
                             <Td key={c} style={{ borderLeft: i === 0 ? "2px solid #888" : undefined, background: "#eef5fb" }}>{fmtKL(t1[c])}</Td>
@@ -621,7 +621,7 @@ export default function SalesReport() {
                   </tbody>
                   <tfoot>
                     <tr style={{ borderTop: "2px solid #666" }}>
-                      <Td align="left" style={{ background: "#a8c8e4", fontWeight: 700, borderRight: "2px solid #888", borderBottom: "none" }}>총합계</Td>
+                      <Td align="left" style={{ background: "#a8c8e4", fontWeight: 700, borderRight: "2px solid #888", borderBottom: "none", position: "sticky", left: 0, zIndex: 1 }}>총합계</Td>
                       {COLS.map((c,i)=>(
                         <Td key={c} style={{ background: "#a8c8e4", fontWeight: 600, borderLeft: i === 0 ? "2px solid #888" : undefined, borderBottom: "none" }}>{fmtKL(tot.t1[c])}</Td>
                       ))}
