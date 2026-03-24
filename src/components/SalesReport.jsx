@@ -552,31 +552,35 @@ export default function SalesReport() {
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680, fontSize: 12 }}>
                   <thead>
                     <tr>
-                      {/* 대구분 헤더 - rowSpan=2 */}
-                      <Th rowSpan={2} align="left" style={{ background: "#c8c8c8", verticalAlign: "bottom", borderRight: "2px solid #888", borderBottom: "2px solid #888" }}>대구분</Th>
+                      {/* 대구분 헤더 - rowSpan=2, 가운데 정렬 */}
+                      <Th rowSpan={2} style={{ background: "#c8c8c8", textAlign: "center", verticalAlign: "middle", borderRight: "2px solid #888", borderBottom: "2px solid #888" }}>대구분</Th>
                       {/* 영업1팀 그룹 헤더 */}
                       <Th colSpan={5} style={{ textAlign: "center", background: "#c8c8c8", borderLeft: "2px solid #888", borderRight: "2px solid #888", borderBottom: "1px solid #aaa" }}>영업1팀 (수도권)</Th>
                       {/* 영업2팀 그룹 헤더 */}
                       <Th colSpan={5} style={{ textAlign: "center", background: "#c8c8c8", borderLeft: "2px solid #888", borderRight: "2px solid #888", borderBottom: "1px solid #aaa" }}>영업2팀 (영남권)</Th>
-                      {/* 총계 헤더 - rowSpan=2 */}
-                      <Th rowSpan={2} style={{ background: "#f0d9b5", color: "#5a3e00", borderLeft: "2px solid #c8892a", borderBottom: "2px solid #888", verticalAlign: "bottom" }}>총계</Th>
+                      {/* 총계 헤더 - rowSpan=2, 가운데 정렬 */}
+                      <Th rowSpan={2} style={{ background: "#f0d9b5", color: "#5a3e00", borderLeft: "2px solid #c8892a", borderBottom: "2px solid #888", textAlign: "center", verticalAlign: "middle" }}>총계</Th>
                     </tr>
                     <tr>
-                      {/* 영업1팀 서브헤더 */}
+                      {/* 영업1팀 서브헤더 - 연블루 계열, 가운데 정렬 */}
                       {["PG","G","K","D","계"].map((c, i) => (
                         <Th key={`t1${c}`} style={{
-                          background: c === "계" ? "#b8d0e8" : "#dcdcdc",
-                          color: c === "계" ? "#1a3a5c" : "#333",
+                          background: c === "계" ? "#a8c8e4" : "#ccdff0",
+                          color: c === "계" ? "#0d2a45" : "#1a1a1a",
+                          textAlign: "center",
+                          verticalAlign: "middle",
                           borderLeft: i === 0 ? "2px solid #888" : undefined,
                           borderRight: c === "계" ? "2px solid #888" : undefined,
                           borderBottom: "2px solid #888",
                         }}>{c}</Th>
                       ))}
-                      {/* 영업2팀 서브헤더 */}
+                      {/* 영업2팀 서브헤더 - 연그린 계열, 가운데 정렬 */}
                       {["PG","G","K","D","계"].map((c, i) => (
                         <Th key={`t2${c}`} style={{
-                          background: c === "계" ? "#b8d0e8" : "#dcdcdc",
-                          color: c === "계" ? "#1a3a5c" : "#333",
+                          background: c === "계" ? "#9ec8ac" : "#c5e8ce",
+                          color: c === "계" ? "#0d2d16" : "#1a1a1a",
+                          textAlign: "center",
+                          verticalAlign: "middle",
                           borderLeft: i === 0 ? "2px solid #888" : undefined,
                           borderRight: c === "계" ? "2px solid #888" : undefined,
                           borderBottom: "2px solid #888",
@@ -591,20 +595,20 @@ export default function SalesReport() {
                       const s2 = COLS.reduce((s,c)=>s+(t2[c]||0),0);
                       return (
                         <tr key={dg}>
-                          {/* 대구분 라벨 */}
+                          {/* 대구분 라벨 - 좌측 정렬 유지 */}
                           <Td align="left" style={{ background: "#fafafa", borderRight: "2px solid #888", fontWeight: 500 }}>{stripNum(dg)}</Td>
-                          {/* 영업1팀 데이터 */}
+                          {/* 영업1팀 데이터 - 연블루 */}
                           {COLS.map((c,i)=>(
-                            <Td key={c} style={{ borderLeft: i === 0 ? "2px solid #888" : undefined }}>{fmtKL(t1[c])}</Td>
+                            <Td key={c} style={{ borderLeft: i === 0 ? "2px solid #888" : undefined, background: "#eef5fb" }}>{fmtKL(t1[c])}</Td>
                           ))}
-                          {/* 영업1팀 계 */}
-                          <Td style={{ borderLeft: "1px solid #ccc", borderRight: "2px solid #888", fontWeight: 600, background: "#ddeaf7", color: "#1a3a5c" }}>{fmtKL(s1)}</Td>
-                          {/* 영업2팀 데이터 */}
+                          {/* 영업1팀 계 - 진한 블루 */}
+                          <Td style={{ borderLeft: "1px solid #b0c8e0", borderRight: "2px solid #888", fontWeight: 600, background: "#cde0f2", color: "#0d2a45" }}>{fmtKL(s1)}</Td>
+                          {/* 영업2팀 데이터 - 연그린 */}
                           {COLS.map((c,i)=>(
-                            <Td key={c} style={{ borderLeft: i === 0 ? "2px solid #888" : undefined }}>{fmtKL(t2[c])}</Td>
+                            <Td key={c} style={{ borderLeft: i === 0 ? "2px solid #888" : undefined, background: "#edf7f0" }}>{fmtKL(t2[c])}</Td>
                           ))}
-                          {/* 영업2팀 계 */}
-                          <Td style={{ borderLeft: "1px solid #ccc", borderRight: "2px solid #888", fontWeight: 600, background: "#ddeaf7", color: "#1a3a5c" }}>{fmtKL(s2)}</Td>
+                          {/* 영업2팀 계 - 진한 그린 */}
+                          <Td style={{ borderLeft: "1px solid #98c8a8", borderRight: "2px solid #888", fontWeight: 600, background: "#bcd9c6", color: "#0d2d16" }}>{fmtKL(s2)}</Td>
                           {/* 총계 */}
                           <Td style={{ borderLeft: "2px solid #c8892a", fontWeight: 700, background: "#fdf3e0", color: "#3d2800" }}>{fmtKLint(s1+s2)}</Td>
                         </tr>
@@ -613,15 +617,15 @@ export default function SalesReport() {
                   </tbody>
                   <tfoot>
                     <tr style={{ borderTop: "2px solid #666" }}>
-                      <Td align="left" style={{ background: "#bdd7ee", fontWeight: 700, borderRight: "2px solid #888", borderBottom: "none" }}>총합계</Td>
+                      <Td align="left" style={{ background: "#a8c8e4", fontWeight: 700, borderRight: "2px solid #888", borderBottom: "none" }}>총합계</Td>
                       {COLS.map((c,i)=>(
-                        <Td key={c} style={{ background: "#bdd7ee", fontWeight: 600, borderLeft: i === 0 ? "2px solid #888" : undefined, borderBottom: "none" }}>{fmtKL(tot.t1[c])}</Td>
+                        <Td key={c} style={{ background: "#a8c8e4", fontWeight: 600, borderLeft: i === 0 ? "2px solid #888" : undefined, borderBottom: "none" }}>{fmtKL(tot.t1[c])}</Td>
                       ))}
-                      <Td style={{ background: "#8cb4d8", fontWeight: 700, color: "#0d2a45", borderLeft: "1px solid #7aa8cc", borderRight: "2px solid #888", borderBottom: "none" }}>{fmtKL(s1T)}</Td>
+                      <Td style={{ background: "#7aaed6", fontWeight: 700, color: "#0d2a45", borderLeft: "1px solid #6898c0", borderRight: "2px solid #888", borderBottom: "none" }}>{fmtKL(s1T)}</Td>
                       {COLS.map((c,i)=>(
-                        <Td key={c} style={{ background: "#bdd7ee", fontWeight: 600, borderLeft: i === 0 ? "2px solid #888" : undefined, borderBottom: "none" }}>{fmtKL(tot.t2[c])}</Td>
+                        <Td key={c} style={{ background: "#9ec8ac", fontWeight: 600, borderLeft: i === 0 ? "2px solid #888" : undefined, borderBottom: "none" }}>{fmtKL(tot.t2[c])}</Td>
                       ))}
-                      <Td style={{ background: "#8cb4d8", fontWeight: 700, color: "#0d2a45", borderLeft: "1px solid #7aa8cc", borderRight: "2px solid #888", borderBottom: "none" }}>{fmtKL(s2T)}</Td>
+                      <Td style={{ background: "#7abf8e", fontWeight: 700, color: "#0d2d16", borderLeft: "1px solid #60a878", borderRight: "2px solid #888", borderBottom: "none" }}>{fmtKL(s2T)}</Td>
                       <Td style={{ background: "#e8c87a", fontWeight: 700, color: "#3d2800", borderLeft: "2px solid #c8892a", borderBottom: "none" }}>{fmtKLint(s1T+s2T)}</Td>
                     </tr>
                   </tfoot>
