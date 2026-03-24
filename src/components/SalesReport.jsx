@@ -547,19 +547,41 @@ export default function SalesReport() {
               </div>
 
               {/* 피벗 테이블 */}
-              <div style={{ overflowX: "auto", border: "0.5px solid var(--color-border-tertiary,#eee)", borderRadius: 12 }}>
-                <div style={{ padding: "6px 10px", fontSize: 11, color: "#aaa", borderBottom: "0.5px solid var(--color-border-tertiary,#eee)" }}>단위: kL</div>
+              <div style={{ overflowX: "auto", border: "1.5px solid #999", borderRadius: 4 }}>
+                <div style={{ padding: "5px 10px", fontSize: 11, color: "#888", borderBottom: "1px solid #ccc", background: "#f7f7f7" }}>단위: kL</div>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680, fontSize: 12 }}>
                   <thead>
                     <tr>
-                      <Th rowSpan={2} align="left" style={{ borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", verticalAlign: "bottom" }}>대구분</Th>
-                      <Th colSpan={5} style={{ textAlign: "center", borderLeft: "1px solid #bbb", borderBottom: "0.5px solid var(--color-border-tertiary,#eee)" }}>영업1팀 (수도권)</Th>
-                      <Th colSpan={5} style={{ textAlign: "center", borderLeft: "1px solid #bbb", borderBottom: "0.5px solid var(--color-border-tertiary,#eee)" }}>영업2팀 (영남권)</Th>
-                      <Th rowSpan={2} style={{ borderLeft: "2px solid #f5a623", borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", verticalAlign: "bottom", borderTop: "2px solid #f5a623" }}>총계</Th>
+                      {/* 대구분 헤더 - rowSpan=2 */}
+                      <Th rowSpan={2} align="left" style={{ background: "#c8c8c8", verticalAlign: "bottom", borderRight: "2px solid #888", borderBottom: "2px solid #888" }}>대구분</Th>
+                      {/* 영업1팀 그룹 헤더 */}
+                      <Th colSpan={5} style={{ textAlign: "center", background: "#c8c8c8", borderLeft: "2px solid #888", borderRight: "2px solid #888", borderBottom: "1px solid #aaa" }}>영업1팀 (수도권)</Th>
+                      {/* 영업2팀 그룹 헤더 */}
+                      <Th colSpan={5} style={{ textAlign: "center", background: "#c8c8c8", borderLeft: "2px solid #888", borderRight: "2px solid #888", borderBottom: "1px solid #aaa" }}>영업2팀 (영남권)</Th>
+                      {/* 총계 헤더 - rowSpan=2 */}
+                      <Th rowSpan={2} style={{ background: "#f0d9b5", color: "#5a3e00", borderLeft: "2px solid #c8892a", borderBottom: "2px solid #888", verticalAlign: "bottom" }}>총계</Th>
                     </tr>
                     <tr>
-                      {["PG","G","K","D","계"].map((c, i) => <Th key={`t1${c}`} style={{ borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", ...(i===0 ? {borderLeft:"1px solid #bbb"} : {}), ...(c==="계" ? {background:"#e8eef7", color:"#2c4a7c"} : {}) }}>{c}</Th>)}
-                      {["PG","G","K","D","계"].map((c, i) => <Th key={`t2${c}`} style={{ borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", ...(i===0 ? {borderLeft:"1px solid #bbb"} : {}), ...(c==="계" ? {background:"#e8eef7", color:"#2c4a7c"} : {}) }}>{c}</Th>)}
+                      {/* 영업1팀 서브헤더 */}
+                      {["PG","G","K","D","계"].map((c, i) => (
+                        <Th key={`t1${c}`} style={{
+                          background: c === "계" ? "#b8d0e8" : "#dcdcdc",
+                          color: c === "계" ? "#1a3a5c" : "#333",
+                          borderLeft: i === 0 ? "2px solid #888" : undefined,
+                          borderRight: c === "계" ? "2px solid #888" : undefined,
+                          borderBottom: "2px solid #888",
+                        }}>{c}</Th>
+                      ))}
+                      {/* 영업2팀 서브헤더 */}
+                      {["PG","G","K","D","계"].map((c, i) => (
+                        <Th key={`t2${c}`} style={{
+                          background: c === "계" ? "#b8d0e8" : "#dcdcdc",
+                          color: c === "계" ? "#1a3a5c" : "#333",
+                          borderLeft: i === 0 ? "2px solid #888" : undefined,
+                          borderRight: c === "계" ? "2px solid #888" : undefined,
+                          borderBottom: "2px solid #888",
+                        }}>{c}</Th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -567,27 +589,40 @@ export default function SalesReport() {
                       const t1 = pivot[dg].t1, t2 = pivot[dg].t2;
                       const s1 = COLS.reduce((s,c)=>s+(t1[c]||0),0);
                       const s2 = COLS.reduce((s,c)=>s+(t2[c]||0),0);
-                      const rowBg = rowIdx % 2 === 1 ? "#f0f5fc" : "transparent";
                       return (
-                        <tr key={dg} style={{ background: rowBg }}>
-                          <Td align="left">{stripNum(dg)}</Td>
-                          {COLS.map((c,i)=><Td key={c} style={{ ...(i===0?{borderLeft:"1px solid #bbb"}:{}), background: rowBg }}>{fmtKL(t1[c])}</Td>)}
-                          <Td style={{ borderLeft:"1px solid #bbb", fontWeight:600, color:"#2c4a7c", background: rowIdx % 2 === 1 ? "#dce7f5" : "#eef3fb" }}>{fmtKL(s1)}</Td>
-                          {COLS.map((c,i)=><Td key={c} style={{ ...(i===0?{borderLeft:"1px solid #bbb"}:{}), background: rowBg }}>{fmtKL(t2[c])}</Td>)}
-                          <Td style={{ borderLeft:"1px solid #bbb", fontWeight:600, color:"#2c4a7c", background: rowIdx % 2 === 1 ? "#dce7f5" : "#eef3fb" }}>{fmtKL(s2)}</Td>
-                          <Td style={{ borderLeft:"2px solid #f5a623", fontWeight:700, fontSize:13, color:"#333", background: rowIdx % 2 === 1 ? "#fef6e4" : "#fffbf2" }}>{fmtKLint(s1+s2)}</Td>
+                        <tr key={dg}>
+                          {/* 대구분 라벨 */}
+                          <Td align="left" style={{ background: "#fafafa", borderRight: "2px solid #888", fontWeight: 500 }}>{stripNum(dg)}</Td>
+                          {/* 영업1팀 데이터 */}
+                          {COLS.map((c,i)=>(
+                            <Td key={c} style={{ borderLeft: i === 0 ? "2px solid #888" : undefined }}>{fmtKL(t1[c])}</Td>
+                          ))}
+                          {/* 영업1팀 계 */}
+                          <Td style={{ borderLeft: "1px solid #ccc", borderRight: "2px solid #888", fontWeight: 600, background: "#ddeaf7", color: "#1a3a5c" }}>{fmtKL(s1)}</Td>
+                          {/* 영업2팀 데이터 */}
+                          {COLS.map((c,i)=>(
+                            <Td key={c} style={{ borderLeft: i === 0 ? "2px solid #888" : undefined }}>{fmtKL(t2[c])}</Td>
+                          ))}
+                          {/* 영업2팀 계 */}
+                          <Td style={{ borderLeft: "1px solid #ccc", borderRight: "2px solid #888", fontWeight: 600, background: "#ddeaf7", color: "#1a3a5c" }}>{fmtKL(s2)}</Td>
+                          {/* 총계 */}
+                          <Td style={{ borderLeft: "2px solid #c8892a", fontWeight: 700, background: "#fdf3e0", color: "#3d2800" }}>{fmtKLint(s1+s2)}</Td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    <tr style={{ background: "#dce7f5" }}>
-                      <Td align="left" style={{ fontWeight:600 }}>총합계</Td>
-                      {COLS.map((c,i)=><Td key={c} style={{ fontWeight:500, ...(i===0?{borderLeft:"1px solid #bbb"}:{}) }}>{fmtKL(tot.t1[c])}</Td>)}
-                      <Td style={{ fontWeight:700, borderLeft:"1px solid #bbb", color:"#2c4a7c" }}>{fmtKL(s1T)}</Td>
-                      {COLS.map((c,i)=><Td key={c} style={{ fontWeight:500, ...(i===0?{borderLeft:"1px solid #bbb"}:{}) }}>{fmtKL(tot.t2[c])}</Td>)}
-                      <Td style={{ fontWeight:700, borderLeft:"1px solid #bbb", color:"#2c4a7c" }}>{fmtKL(s2T)}</Td>
-                      <Td style={{ fontWeight:700, borderLeft:"2px solid #f5a623", fontSize:13, color:"#333", background:"#fce8b2" }}>{fmtKLint(s1T+s2T)}</Td>
+                    <tr style={{ borderTop: "2px solid #666" }}>
+                      <Td align="left" style={{ background: "#bdd7ee", fontWeight: 700, borderRight: "2px solid #888", borderBottom: "none" }}>총합계</Td>
+                      {COLS.map((c,i)=>(
+                        <Td key={c} style={{ background: "#bdd7ee", fontWeight: 600, borderLeft: i === 0 ? "2px solid #888" : undefined, borderBottom: "none" }}>{fmtKL(tot.t1[c])}</Td>
+                      ))}
+                      <Td style={{ background: "#8cb4d8", fontWeight: 700, color: "#0d2a45", borderLeft: "1px solid #7aa8cc", borderRight: "2px solid #888", borderBottom: "none" }}>{fmtKL(s1T)}</Td>
+                      {COLS.map((c,i)=>(
+                        <Td key={c} style={{ background: "#bdd7ee", fontWeight: 600, borderLeft: i === 0 ? "2px solid #888" : undefined, borderBottom: "none" }}>{fmtKL(tot.t2[c])}</Td>
+                      ))}
+                      <Td style={{ background: "#8cb4d8", fontWeight: 700, color: "#0d2a45", borderLeft: "1px solid #7aa8cc", borderRight: "2px solid #888", borderBottom: "none" }}>{fmtKL(s2T)}</Td>
+                      <Td style={{ background: "#e8c87a", fontWeight: 700, color: "#3d2800", borderLeft: "2px solid #c8892a", borderBottom: "none" }}>{fmtKLint(s1T+s2T)}</Td>
                     </tr>
                   </tfoot>
                 </table>
@@ -647,13 +682,13 @@ function DropZone({ jiyeok, state, info, inputId, onFile }) {
 
 const Th = ({ children, align = "right", colSpan, rowSpan, style = {} }) => (
   <th colSpan={colSpan} rowSpan={rowSpan}
-    style={{ padding: "6px 8px", fontWeight: 500, color: "var(--color-text-secondary,#888)", background: "var(--color-background-secondary,#f5f5f5)", textAlign: align, whiteSpace: "nowrap", ...style }}>
+    style={{ padding: "7px 9px", fontWeight: 600, color: "#1a1a1a", background: "#d9d9d9", textAlign: align, whiteSpace: "nowrap", borderBottom: "1px solid #999", borderRight: "1px solid #bbb", ...style }}>
     {children}
   </th>
 );
 
 const Td = ({ children, align = "right", style = {} }) => (
-  <td style={{ padding: "6px 8px", textAlign: align, borderBottom: "0.5px solid var(--color-border-tertiary,#eee)", color: "var(--color-text-primary,#111)", ...style }}>
+  <td style={{ padding: "6px 9px", textAlign: align, borderBottom: "1px solid #ccc", borderRight: "1px solid #e0e0e0", color: "#111", background: "#fff", ...style }}>
     {children}
   </td>
 );
