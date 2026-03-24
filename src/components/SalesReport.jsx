@@ -40,8 +40,8 @@ const COL_LABELS = { PG: "고급휘발유", G: "휘발유", K: "등유", D: "경
 // ── 유틸 ────────────────────────────────────────────────────
 const stripNum = (dg) => (dg || "").replace(/^\d+\./, "").trim();
 
-const fmtKL = (v) => (v ? Math.round(v / 1000).toLocaleString() + "kL" : "-");
-const fmtKLint = (v) => (v ? Math.round(v / 1000).toLocaleString() + "kL" : "-");
+const fmtKL = (v) => (v ? Math.round(v / 1000).toLocaleString() : "-");
+const fmtKLint = (v) => (v ? Math.round(v / 1000).toLocaleString() : "-");
 
 function mapDG(maip, teuk, jiyeok, learned, jeoyuso, jeojangso) {
   const m = (maip || "").trim();
@@ -553,40 +553,41 @@ export default function SalesReport() {
                   <thead>
                     <tr>
                       <Th rowSpan={2} align="left" style={{ borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", verticalAlign: "bottom" }}>대구분</Th>
-                      <Th colSpan={5} style={{ textAlign: "center", borderLeft: "0.5px solid var(--color-border-secondary,#ddd)", borderBottom: "0.5px solid var(--color-border-tertiary,#eee)" }}>영업1팀 (수도권)</Th>
-                      <Th colSpan={5} style={{ textAlign: "center", borderLeft: "0.5px solid var(--color-border-secondary,#ddd)", borderBottom: "0.5px solid var(--color-border-tertiary,#eee)" }}>영업2팀 (영남권)</Th>
-                      <Th rowSpan={2} style={{ borderLeft: "0.5px solid var(--color-border-secondary,#ddd)", borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", verticalAlign: "bottom" }}>총계</Th>
+                      <Th colSpan={5} style={{ textAlign: "center", borderLeft: "1px solid #bbb", borderBottom: "0.5px solid var(--color-border-tertiary,#eee)" }}>영업1팀 (수도권)</Th>
+                      <Th colSpan={5} style={{ textAlign: "center", borderLeft: "1px solid #bbb", borderBottom: "0.5px solid var(--color-border-tertiary,#eee)" }}>영업2팀 (영남권)</Th>
+                      <Th rowSpan={2} style={{ borderLeft: "2px solid #f5a623", borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", verticalAlign: "bottom", borderTop: "2px solid #f5a623" }}>총계</Th>
                     </tr>
                     <tr>
-                      {["PG","G","K","D","계"].map((c, i) => <Th key={`t1${c}`} style={{ borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", ...(i===0 ? {borderLeft:"0.5px solid var(--color-border-secondary,#ddd)"} : {}) }}>{c}</Th>)}
-                      {["PG","G","K","D","계"].map((c, i) => <Th key={`t2${c}`} style={{ borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", ...(i===0 ? {borderLeft:"0.5px solid var(--color-border-secondary,#ddd)"} : {}) }}>{c}</Th>)}
+                      {["PG","G","K","D","계"].map((c, i) => <Th key={`t1${c}`} style={{ borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", ...(i===0 ? {borderLeft:"1px solid #bbb"} : {}), ...(c==="계" ? {background:"#e8eef7", color:"#2c4a7c"} : {}) }}>{c}</Th>)}
+                      {["PG","G","K","D","계"].map((c, i) => <Th key={`t2${c}`} style={{ borderBottom: "0.5px solid var(--color-border-secondary,#ddd)", ...(i===0 ? {borderLeft:"1px solid #bbb"} : {}), ...(c==="계" ? {background:"#e8eef7", color:"#2c4a7c"} : {}) }}>{c}</Th>)}
                     </tr>
                   </thead>
                   <tbody>
-                    {allDg.map((dg) => {
+                    {allDg.map((dg, rowIdx) => {
                       const t1 = pivot[dg].t1, t2 = pivot[dg].t2;
                       const s1 = COLS.reduce((s,c)=>s+(t1[c]||0),0);
                       const s2 = COLS.reduce((s,c)=>s+(t2[c]||0),0);
+                      const rowBg = rowIdx % 2 === 1 ? "#f0f5fc" : "transparent";
                       return (
-                        <tr key={dg}>
+                        <tr key={dg} style={{ background: rowBg }}>
                           <Td align="left">{stripNum(dg)}</Td>
-                          {COLS.map((c,i)=><Td key={c} style={i===0?{borderLeft:"0.5px solid var(--color-border-secondary,#ddd)"}:{}}>{fmtKL(t1[c])}</Td>)}
-                          <Td style={{ borderLeft:"0.5px solid var(--color-border-secondary,#ddd)", fontWeight:500 }}>{fmtKL(s1)}</Td>
-                          {COLS.map((c,i)=><Td key={c} style={i===0?{borderLeft:"0.5px solid var(--color-border-secondary,#ddd)"}:{}}>{fmtKL(t2[c])}</Td>)}
-                          <Td style={{ borderLeft:"0.5px solid var(--color-border-secondary,#ddd)", fontWeight:500 }}>{fmtKL(s2)}</Td>
-                          <Td style={{ borderLeft:"0.5px solid var(--color-border-secondary,#ddd)", fontWeight:500, fontSize:13 }}>{fmtKLint(s1+s2)}</Td>
+                          {COLS.map((c,i)=><Td key={c} style={{ ...(i===0?{borderLeft:"1px solid #bbb"}:{}), background: rowBg }}>{fmtKL(t1[c])}</Td>)}
+                          <Td style={{ borderLeft:"1px solid #bbb", fontWeight:600, color:"#2c4a7c", background: rowIdx % 2 === 1 ? "#dce7f5" : "#eef3fb" }}>{fmtKL(s1)}</Td>
+                          {COLS.map((c,i)=><Td key={c} style={{ ...(i===0?{borderLeft:"1px solid #bbb"}:{}), background: rowBg }}>{fmtKL(t2[c])}</Td>)}
+                          <Td style={{ borderLeft:"1px solid #bbb", fontWeight:600, color:"#2c4a7c", background: rowIdx % 2 === 1 ? "#dce7f5" : "#eef3fb" }}>{fmtKL(s2)}</Td>
+                          <Td style={{ borderLeft:"2px solid #f5a623", fontWeight:700, fontSize:13, color:"#333", background: rowIdx % 2 === 1 ? "#fef6e4" : "#fffbf2" }}>{fmtKLint(s1+s2)}</Td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    <tr style={{ background: "var(--color-background-secondary,#f5f5f5)" }}>
-                      <Td align="left" style={{ fontWeight:500 }}>총합계</Td>
-                      {COLS.map((c,i)=><Td key={c} style={{ fontWeight:500, ...(i===0?{borderLeft:"0.5px solid var(--color-border-secondary,#ddd)"}:{}) }}>{fmtKL(tot.t1[c])}</Td>)}
-                      <Td style={{ fontWeight:500, borderLeft:"0.5px solid var(--color-border-secondary,#ddd)" }}>{fmtKL(s1T)}</Td>
-                      {COLS.map((c,i)=><Td key={c} style={{ fontWeight:500, ...(i===0?{borderLeft:"0.5px solid var(--color-border-secondary,#ddd)"}:{}) }}>{fmtKL(tot.t2[c])}</Td>)}
-                      <Td style={{ fontWeight:500, borderLeft:"0.5px solid var(--color-border-secondary,#ddd)" }}>{fmtKL(s2T)}</Td>
-                      <Td style={{ fontWeight:500, borderLeft:"0.5px solid var(--color-border-secondary,#ddd)", fontSize:13 }}>{fmtKLint(s1T+s2T)}</Td>
+                    <tr style={{ background: "#dce7f5" }}>
+                      <Td align="left" style={{ fontWeight:600 }}>총합계</Td>
+                      {COLS.map((c,i)=><Td key={c} style={{ fontWeight:500, ...(i===0?{borderLeft:"1px solid #bbb"}:{}) }}>{fmtKL(tot.t1[c])}</Td>)}
+                      <Td style={{ fontWeight:700, borderLeft:"1px solid #bbb", color:"#2c4a7c" }}>{fmtKL(s1T)}</Td>
+                      {COLS.map((c,i)=><Td key={c} style={{ fontWeight:500, ...(i===0?{borderLeft:"1px solid #bbb"}:{}) }}>{fmtKL(tot.t2[c])}</Td>)}
+                      <Td style={{ fontWeight:700, borderLeft:"1px solid #bbb", color:"#2c4a7c" }}>{fmtKL(s2T)}</Td>
+                      <Td style={{ fontWeight:700, borderLeft:"2px solid #f5a623", fontSize:13, color:"#333", background:"#fce8b2" }}>{fmtKLint(s1T+s2T)}</Td>
                     </tr>
                   </tfoot>
                 </table>
