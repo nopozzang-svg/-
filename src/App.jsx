@@ -1179,7 +1179,7 @@ export default function SailDashboard() {
       <main className="dash-main">
 
         {/* ── 국제 원유 · 환율 · MOPS ── */}
-        <div className="intl-section">
+        <div className="intl-section" style={fuelType === "sales" ? { display: "none" } : {}}>
           <div className="intl-crude-row">
             {[
               { label: "WTI",       data: intlData?.petro?.wti,   unit: "$/bbl" },
