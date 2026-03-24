@@ -547,8 +547,9 @@ export default function SalesReport() {
               </div>
 
               {/* 피벗 테이블 */}
-              <div style={{ overflowX: "auto", border: "1.5px solid #999", borderRadius: 4 }}>
-                <div style={{ padding: "5px 10px", fontSize: 11, color: "#888", borderBottom: "1px solid #ccc", background: "#f7f7f7" }}>단위: kL</div>
+              <div>
+                <div style={{ textAlign: "right", fontSize: 11, color: "#666", marginBottom: 4 }}>단위: kL</div>
+                <div style={{ overflowX: "auto", border: "1.5px solid #999", borderRadius: 4 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680, fontSize: 12 }}>
                   <thead>
                     <tr>
@@ -630,6 +631,7 @@ export default function SalesReport() {
                     </tr>
                   </tfoot>
                 </table>
+              </div>
               </div>
             </>
           )}
