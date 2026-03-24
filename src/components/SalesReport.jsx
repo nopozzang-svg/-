@@ -40,8 +40,8 @@ const COL_LABELS = { PG: "고급휘발유", G: "휘발유", K: "등유", D: "경
 // ── 유틸 ────────────────────────────────────────────────────
 const stripNum = (dg) => (dg || "").replace(/^\d+\./, "").trim();
 
-const fmtKL = (v) => (v ? Math.round(v / 1000).toLocaleString() : "-");
-const fmtKLint = (v) => (v ? Math.round(v / 1000).toLocaleString() : "-");
+const fmtKL = (v) => (v ? Math.round(v / 1000).toLocaleString() + "kL" : "-");
+const fmtKLint = (v) => (v ? Math.round(v / 1000).toLocaleString() + "kL" : "-");
 
 function mapDG(maip, teuk, jiyeok, learned, jeoyuso, jeojangso) {
   const m = (maip || "").trim();
@@ -548,7 +548,7 @@ export default function SalesReport() {
 
               {/* 피벗 테이블 */}
               <div style={{ overflowX: "auto", border: "0.5px solid var(--color-border-tertiary,#eee)", borderRadius: 12 }}>
-                <div style={{ padding: "6px 10px", fontSize: 11, color: "#aaa", borderBottom: "0.5px solid var(--color-border-tertiary,#eee)" }}>단위: kL (소수점 1자리)</div>
+                <div style={{ padding: "6px 10px", fontSize: 11, color: "#aaa", borderBottom: "0.5px solid var(--color-border-tertiary,#eee)" }}>단위: kL</div>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680, fontSize: 12 }}>
                   <thead>
                     <tr>
