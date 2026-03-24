@@ -141,7 +141,7 @@ function buildPivot(records) {
 //  메인 컴포넌트
 // ════════════════════════════════════════════════════════════
 export default function SalesReport() {
-  const [tab, setTab] = useState("upload");
+  const [tab, setTab] = useState("report");
   const [records, setRecords] = useState([]);
   const [learned, setLearned] = useState({});
 
@@ -184,9 +184,12 @@ export default function SalesReport() {
 
       setRecords(merged);
       if (merged.length) {
-        const dates = merged.map((r) => r.date).filter(Boolean).sort();
-        setDateFrom(dates[0]);
-        setDateTo(dates[dates.length - 1]);
+        const now = new Date();
+        const y = now.getFullYear();
+        const mo = String(now.getMonth() + 1).padStart(2, "0");
+        const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+        setDateFrom(`${y}-${mo}-01`);
+        setDateTo(`${y}-${mo}-${String(lastDay).padStart(2, "0")}`);
       }
     })();
   }, []);
