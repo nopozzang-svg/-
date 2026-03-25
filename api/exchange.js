@@ -53,8 +53,8 @@ export default async function handler(req, res) {
     const current = rates[rates.length - 1];
     const prev    = rates[rates.length - 2];
 
-    // 1시간 캐시
-    res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate");
+    // CDN 캐시 비활성화 — 프론트엔드 localStorage에서 캐싱 처리
+    res.setHeader("Cache-Control", "no-store");
     return res.status(200).json({
       current,
       prev,

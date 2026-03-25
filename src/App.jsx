@@ -956,10 +956,17 @@ export default function SailDashboard() {
     const after8am = hhmm >= 8 * 60; // KST 08:00 이후 여부
 
     // 캐시 확인: 오늘 08:00 이후에 저장된 데이터이고 history가 포함된 경우만 재사용
-    // (history 없는 구버전 캐시는 무시하고 재fetch)
+    // (history 없는 구버전 캐시, 2시간 이상 된 캐시는 무시하고 재fetch)
+    const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
     try {
       const cached = JSON.parse(localStorage.getItem(INTL_KEY) || "null");
-      if (cached && cached.date === todayStr && cached.fetchedAfter8 && cached.data?.petro?.wti?.history) {
+      if (
+        cached &&
+        cached.date === todayStr &&
+        cached.fetchedAfter8 &&
+        cached.data?.petro?.wti?.history &&
+        cached.fetchedAt > twoHoursAgo
+      ) {
         setIntlData(cached.data);
         mergeIntlHistory(cached.data.petro, cached.data.exch);
         return;
@@ -986,7 +993,7 @@ export default function SailDashboard() {
       const exch  = await exchRes.json();
       const data  = { petro, exch };
       setIntlData(data);
-      localStorage.setItem(INTL_KEY, JSON.stringify({ date: todayStr, fetchedAfter8: true, data }));
+      localStorage.setItem(INTL_KEY, JSON.stringify({ date: todayStr, fetchedAfter8: true, fetchedAt: Date.now(), data }));
       mergeIntlHistory(petro, exch);
     } catch (e) {
       console.warn("International data fetch failed:", e);

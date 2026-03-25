@@ -79,8 +79,8 @@ export default async function handler(req, res) {
       mopsKerosene: getDataset(prodSection, "등유"),
     };
 
-    // 1시간 캐시 (페트로넷 하루 1~2회 갱신)
-    res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate");
+    // CDN 캐시 비활성화 — 프론트엔드 localStorage에서 캐싱 처리
+    res.setHeader("Cache-Control", "no-store");
     return res.status(200).json(result);
   } catch (err) {
     console.error("Petronet proxy error:", err);
