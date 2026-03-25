@@ -989,6 +989,7 @@ export default function SailDashboard() {
         fetch("/api/petronet"),
         fetch("/api/exchange"),
       ]);
+      if (!petroRes.ok || !exchRes.ok) throw new Error("API error");
       const petro = await petroRes.json();
       const exch  = await exchRes.json();
       const data  = { petro, exch };
