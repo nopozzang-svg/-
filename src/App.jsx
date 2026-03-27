@@ -1202,7 +1202,7 @@ export default function SailDashboard() {
               const hist = data?.history;
               const lastDate = hist ? Object.keys(hist).sort().pop() : null;
               const dateLabel = lastDate
-                ? `${parseInt(lastDate.slice(5, 7), 10)}/${parseInt(lastDate.slice(8, 10), 10)} 기준`
+                ? `(${parseInt(lastDate.slice(5, 7), 10)}/${parseInt(lastDate.slice(8, 10), 10)})`
                 : null;
               return (
                 <div key={label} className="intl-crude-card">
@@ -1232,7 +1232,7 @@ export default function SailDashboard() {
                 if (!lastDate) return null;
                 const m = parseInt(lastDate.slice(5, 7), 10);
                 const d = parseInt(lastDate.slice(8, 10), 10);
-                return <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>{m}/{d} 기준</span>;
+                return <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>({m}/{d})</span>;
               })()}
             </div>
             <table className="intl-mops-table">
