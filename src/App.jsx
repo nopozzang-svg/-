@@ -1188,6 +1188,19 @@ export default function SailDashboard() {
 
         {/* ── 국제 원유 · 환율 · MOPS ── */}
         <div className="intl-section" style={fuelType === "sales" ? { display: "none" } : {}}>
+          {(() => {
+            const hist = intlData?.petro?.wti?.history;
+            if (!hist) return null;
+            const lastDate = Object.keys(hist).sort().pop();
+            if (!lastDate) return null;
+            const m = parseInt(lastDate.slice(5, 7), 10);
+            const d = parseInt(lastDate.slice(8, 10), 10);
+            return (
+              <div style={{ textAlign: "right", fontSize: 12, color: "#9ca3af", marginBottom: 6 }}>
+                {m}/{d} 기준
+              </div>
+            );
+          })()}
           <div className="intl-crude-row">
             {[
               { label: "WTI",       data: intlData?.petro?.wti,   unit: "$/bbl" },
@@ -1217,7 +1230,18 @@ export default function SailDashboard() {
           </div>
 
           <div className="intl-mops-box">
-            <div className="intl-mops-title">싱가포르 MOPS 국제제품가</div>
+            <div className="intl-mops-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              싱가포르 MOPS 국제제품가
+              {(() => {
+                const hist = intlData?.petro?.mopsGasoline?.history;
+                if (!hist) return null;
+                const lastDate = Object.keys(hist).sort().pop();
+                if (!lastDate) return null;
+                const m = parseInt(lastDate.slice(5, 7), 10);
+                const d = parseInt(lastDate.slice(8, 10), 10);
+                return <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>{m}/{d} 기준</span>;
+              })()}
+            </div>
             <table className="intl-mops-table">
               <tbody>
                 {[
