@@ -1188,35 +1188,28 @@ export default function SailDashboard() {
 
         {/* ── 국제 원유 · 환율 · MOPS ── */}
         <div className="intl-section" style={fuelType === "sales" ? { display: "none" } : {}}>
-          {(() => {
-            const hist = intlData?.petro?.wti?.history;
-            if (!hist) return null;
-            const lastDate = Object.keys(hist).sort().pop();
-            if (!lastDate) return null;
-            const m = parseInt(lastDate.slice(5, 7), 10);
-            const d = parseInt(lastDate.slice(8, 10), 10);
-            return (
-              <div style={{ textAlign: "right", fontSize: 12, color: "#9ca3af", marginBottom: 6 }}>
-                {m}/{d} 기준
-              </div>
-            );
-          })()}
           <div className="intl-crude-row">
             {[
               { label: "WTI",       data: intlData?.petro?.wti,   unit: "$/bbl" },
               { label: "두바이유",   data: intlData?.petro?.dubai, unit: "$/bbl" },
               { label: "원/달러",    data: intlData?.exch,         unit: "원" },
-            ].map(({ label, data, unit, round }) => {
+            ].map(({ label, data, unit }) => {
               const cur  = data?.current ?? null;
               const chg  = data?.change  ?? null;
               const up   = chg !== null && chg > 0;
               const dn   = chg !== null && chg < 0;
-              const disp = cur === null
-                ? (intlLoading ? "—" : "—")
-                : cur.toFixed(1);
+              const disp = cur === null ? "—" : cur.toFixed(1);
+              const hist = data?.history;
+              const lastDate = hist ? Object.keys(hist).sort().pop() : null;
+              const dateLabel = lastDate
+                ? `${parseInt(lastDate.slice(5, 7), 10)}/${parseInt(lastDate.slice(8, 10), 10)} 기준`
+                : null;
               return (
                 <div key={label} className="intl-crude-card">
-                  <span className="intl-card-label">{label}</span>
+                  <span className="intl-card-label">
+                    {label}
+                    {dateLabel && <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginLeft: 6 }}>{dateLabel}</span>}
+                  </span>
                   <span className="intl-card-value">{disp}</span>
                   <span className="intl-card-unit">{unit}</span>
                   {chg !== null && (
