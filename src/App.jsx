@@ -292,6 +292,7 @@ const STATION_GROUPS = [
       { id: "A0001980", name: "세광 푸른",    brand: "HD현대오일" },
       { id: "A0001938", name: "안양원예농협", brand: "NH-OIL" },
       { id: "A0009185", name: "무지내",       brand: "알뜰" },
+      { id: "A0000253", name: "경동고속철",   brand: "HD현대오일" },
     ],
   },
   {

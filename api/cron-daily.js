@@ -23,7 +23,7 @@ const ALL_GROUPS = [
   {
     name: "박달",
     sail: { id: "A0000263" },
-    competitors: [{ name: "세광 푸른", id: "A0001980" }, { name: "안양원예농협", id: "A0001938" }, { name: "무지내", id: "A0009185" }],
+    competitors: [{ name: "세광 푸른", id: "A0001980" }, { name: "안양원예농협", id: "A0001938" }, { name: "무지내", id: "A0009185" }, { name: "경동고속철", id: "A0000253" }],
   },
   {
     name: "일품",
