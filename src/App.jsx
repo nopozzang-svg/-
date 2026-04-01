@@ -74,11 +74,12 @@ const calcMonthStats = (field) => {
     const month  = nowKST.getUTCMonth(); // 0-indexed
     const today  = nowKST.getUTCDate();
 
-    // 당월 실적 데이터
+    // 당월 실적 데이터 (주말 제외 — carry-forward 방지)
     const monthEntries = Object.entries(stored)
       .filter(([date]) => {
         const d = new Date(date);
-        return d.getFullYear() === year && d.getMonth() === month;
+        const dow = d.getDay(); // 0=일, 6=토
+        return d.getFullYear() === year && d.getMonth() === month && dow !== 0 && dow !== 6;
       })
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([, v]) => v[field])

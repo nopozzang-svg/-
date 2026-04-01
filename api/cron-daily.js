@@ -233,29 +233,32 @@ export default async function handler(req, res) {
     errors.push(`station fetch: ${e.message}`);
   }
 
-  // ─── 2. 국제지표 저장 ───
-  try {
-    const petroHtml = petroRes ? await petroRes.text() : "";
-    const exchHtml  = exchRes  ? await exchRes.text()  : "";
+  // ─── 2. 국제지표 저장 (주말 제외 — carry-forward 방지) ───
+  const todayDow = new Date(todayKST).getDay(); // 0=일, 6=토
+  if (todayDow !== 0 && todayDow !== 6) {
+    try {
+      const petroHtml = petroRes ? await petroRes.text() : "";
+      const exchHtml  = exchRes  ? await exchRes.text()  : "";
 
-    const petro = petroHtml ? parsePetronet(petroHtml) : null;
-    const exch  = exchHtml  ? parseExchange(exchHtml)  : null;
+      const petro = petroHtml ? parsePetronet(petroHtml) : null;
+      const exch  = exchHtml  ? parseExchange(exchHtml)  : null;
 
-    const intlRow = {
-      date:        todayKST,
-      wti:         petro?.wti?.current         ?? null,
-      dubai:       petro?.dubai?.current        ?? null,
-      brent:       petro?.brent?.current        ?? null,
-      mops_gas:    petro?.mopsGasoline?.current ?? null,
-      mops_diesel: petro?.mopsDiesel?.current   ?? null,
-      mops_kero:   petro?.mopsKerosene?.current ?? null,
-      exch:        exch?.current                ?? null,
-    };
+      const intlRow = {
+        date:        todayKST,
+        wti:         petro?.wti?.current         ?? null,
+        dubai:       petro?.dubai?.current        ?? null,
+        brent:       petro?.brent?.current        ?? null,
+        mops_gas:    petro?.mopsGasoline?.current ?? null,
+        mops_diesel: petro?.mopsDiesel?.current   ?? null,
+        mops_kero:   petro?.mopsKerosene?.current ?? null,
+        exch:        exch?.current                ?? null,
+      };
 
-    const saveRes = await supaUpsert("intl_snapshots", intlRow);
-    if (!saveRes.ok) errors.push(`intl_snapshots upsert: ${saveRes.status}`);
-  } catch (e) {
-    errors.push(`intl fetch: ${e.message}`);
+      const saveRes = await supaUpsert("intl_snapshots", intlRow);
+      if (!saveRes.ok) errors.push(`intl_snapshots upsert: ${saveRes.status}`);
+    } catch (e) {
+      errors.push(`intl fetch: ${e.message}`);
+    }
   }
 
   return res.status(200).json({

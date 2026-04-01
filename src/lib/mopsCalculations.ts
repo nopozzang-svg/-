@@ -109,7 +109,8 @@ export function extractActualMonthlyValues(
   return Object.entries(history)
     .filter(([date]) => {
       const d = new Date(date);
-      return d.getFullYear() === year && d.getMonth() === month;
+      const dow = d.getDay(); // 0=일, 6=토
+      return d.getFullYear() === year && d.getMonth() === month && dow !== 0 && dow !== 6;
     })
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([, v]) => v[field])
