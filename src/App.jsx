@@ -329,6 +329,16 @@ const STATION_GROUPS = [
       { id: "A0008889", name: "기흥서일",   brand: "GS칼텍스" },
     ],
   },
+  {
+    name: "김포제2", region: "경기 김포", regionCode: "02",
+    sail: { id: "A0019433", name: "김포제2주유소", brand: "알뜰" },
+    competitors: [
+      { id: "A0007874", name: "초원셀프", brand: "S-OIL" },
+      { id: "A0007738", name: "대성1",    brand: "GS칼텍스" },
+      { id: "A0008977", name: "인에너지", brand: "S-OIL" },
+      { id: "A0007957", name: "SK에덴",   brand: "SK에너지" },
+    ],
+  },
 ];
 
 const CHAIN_GROUPS = [
@@ -445,6 +455,16 @@ const SAMPLE_DATA = {
       competitors: [
         { name: "청정에너지", gasoline: 1655, diesel: 1545, prevGasoline: null, prevDiesel: null },
         { name: "기흥서일",   gasoline: 1665, diesel: 1595, prevGasoline: null, prevDiesel: null },
+      ],
+    },
+    {
+      name: "김포제2",
+      sail:        { gasoline: 1650, diesel: 1560, prevGasoline: null, prevDiesel: null },
+      competitors: [
+        { name: "초원셀프", gasoline: 1660, diesel: 1570, prevGasoline: null, prevDiesel: null },
+        { name: "대성1",    gasoline: 1655, diesel: 1565, prevGasoline: null, prevDiesel: null },
+        { name: "인에너지", gasoline: 1658, diesel: 1568, prevGasoline: null, prevDiesel: null },
+        { name: "SK에덴",   gasoline: 1662, diesel: 1572, prevGasoline: null, prevDiesel: null },
       ],
     },
   ],

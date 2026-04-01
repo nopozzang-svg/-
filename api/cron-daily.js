@@ -45,6 +45,11 @@ const ALL_GROUPS = [
     sail: { id: "A0008842" },
     competitors: [{ name: "청정에너지", id: "A0008792" }, { name: "기흥서일", id: "A0008889" }],
   },
+  {
+    name: "김포제2",
+    sail: { id: "A0019433" },
+    competitors: [{ name: "초원셀프", id: "A0007874" }, { name: "대성1", id: "A0007738" }, { name: "인에너지", id: "A0008977" }, { name: "SK에덴", id: "A0007957" }],
+  },
   // CHAIN_GROUPS
   {
     name: "토진",
