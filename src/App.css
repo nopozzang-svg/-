@@ -1095,6 +1095,39 @@
   border-top: 1px solid #f3f4f6;
 }
 
+/* ── 월 선택 탭 ── */
+.mops-month-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mops-month-tab {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mops-month-tab:hover {
+  background: rgba(124,58,237,0.06);
+  border-color: #c4b5fd;
+  color: #7c3aed;
+}
+
+.mops-month-tab-active {
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #fff;
+  font-weight: 700;
+}
+
 /* ══════════════════════════════════════
    MOPS 상수 설정 모달
 ══════════════════════════════════════ */

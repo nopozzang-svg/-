@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   extractActualMonthlyValues,
   getRemainingWeekdays,
   calculateProductSummary,
 } from "../lib/mopsCalculations";
 import {
+  getAllConstants,
   getCurrentMonthConstants,
   getCurrentMonthKey,
 } from "../lib/mopsConstants";
@@ -51,32 +52,52 @@ function renderDiff(result: MopsResult) {
 const EMPTY: MopsResult = { daily: null, monthlyAverage: null, projectedMonthlyAverage: null };
 
 export default function MopsSection({ intlData, onOpenSettings }: Props) {
-  const monthKey  = getCurrentMonthKey();
-  const constants = getCurrentMonthConstants(monthKey);
+  const currentMonthKey = getCurrentMonthKey();
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
 
-  // KST 기준 날짜 정보
-  const { year, month, today } = useMemo(() => {
+  // 상수가 저장된 월 목록 (최신순)
+  const availableMonths = useMemo(() => {
+    const allConsts = getAllConstants();
+    return Object.keys(allConsts).sort().reverse();
+  }, []);
+
+  const isCurrentMonth = selectedMonth === currentMonthKey;
+
+  // KST 기준 오늘 날짜 정보 (현재 월 계산용)
+  const { year: todayYear, month: todayMonth, today } = useMemo(() => {
     const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
     return {
       year:  kst.getUTCFullYear(),
-      month: kst.getUTCMonth(), // 0-indexed
+      month: kst.getUTCMonth(),
       today: kst.getUTCDate(),
     };
   }, []);
 
-  const remainingWeekdays = getRemainingWeekdays(year, month, today);
+  const remainingWeekdays = getRemainingWeekdays(todayYear, todayMonth, today);
+
+  // 선택된 월의 연도/월(0-indexed) 파싱
+  const [selYear, selMonthIdx] = useMemo(() => {
+    const parts = selectedMonth.split("-").map(Number);
+    return [parts[0], parts[1] - 1];
+  }, [selectedMonth]);
+
+  // 선택된 월의 상수
+  const constants = getCurrentMonthConstants(selectedMonth);
 
   // 계산 결과
   const results = useMemo((): MopsAllProducts | null => {
-    if (!constants || !intlData) return null;
+    if (!constants) return null;
 
     let history: Record<string, Record<string, number>> = {};
     try {
       history = JSON.parse(localStorage.getItem(INTL_HISTORY_KEY) || "{}");
     } catch { /* ignore */ }
 
-    const exchValues = extractActualMonthlyValues(history, "exch", year, month);
-    const dailyExch  = intlData.exch?.current ?? null;
+    // 과거 월: remainingWeekdays=0, daily=null → 월 평균만 의미 있음
+    const selRemaining = isCurrentMonth ? remainingWeekdays : 0;
+    const dailyExch    = isCurrentMonth ? (intlData?.exch?.current ?? null) : null;
+
+    const exchValues = extractActualMonthlyValues(history, "exch", selYear, selMonthIdx);
 
     const compute = (
       productField: string,
@@ -84,23 +105,23 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       productKey:   keyof typeof constants.products
     ): MopsResult =>
       calculateProductSummary({
-        dailyProductPrice:    dailyValue ?? null,
+        dailyProductPrice:    isCurrentMonth ? (dailyValue ?? null) : null,
         dailyExchangeRate:    dailyExch,
-        monthlyProductValues: extractActualMonthlyValues(history, productField, year, month),
+        monthlyProductValues: extractActualMonthlyValues(history, productField, selYear, selMonthIdx),
         monthlyExchValues:    exchValues,
-        remainingWeekdays,
+        remainingWeekdays:    selRemaining,
         constants:            constants.products[productKey],
       });
 
     return {
-      gasoline: compute("mopsGas",    intlData.petro?.mopsGasoline?.current, "gasoline"),
-      diesel:   compute("mopsDiesel", intlData.petro?.mopsDiesel?.current,   "diesel"),
-      kerosene: compute("mopsKero",   intlData.petro?.mopsKerosene?.current,  "kerosene"),
+      gasoline: compute("mopsGas",    intlData?.petro?.mopsGasoline?.current, "gasoline"),
+      diesel:   compute("mopsDiesel", intlData?.petro?.mopsDiesel?.current,   "diesel"),
+      kerosene: compute("mopsKero",   intlData?.petro?.mopsKerosene?.current,  "kerosene"),
     };
-  }, [intlData, constants, year, month, today, remainingWeekdays]);
+  }, [intlData, constants, selYear, selMonthIdx, isCurrentMonth, remainingWeekdays]);
 
   const missingConstants = !constants;
-  const showWarning      = missingConstants && today <= 5;
+  const showWarning      = missingConstants && isCurrentMonth && today <= 5;
 
   const updatedAt = constants?.updatedAt
     ? new Date(constants.updatedAt).toLocaleString("ko-KR", {
@@ -130,7 +151,7 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
           )}
           {!constants && (
             <span className="mops-meta mops-meta-warn">
-              ⚠ {monthKey} 상수 미입력
+              ⚠ {selectedMonth} 상수 미입력
             </span>
           )}
           <button className="mops-settings-btn" onClick={onOpenSettings}>
@@ -139,11 +160,35 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
         </div>
       </div>
 
+      {/* ── 월 선택 탭 ── */}
+      {availableMonths.length > 0 && (
+        <div className="mops-month-tabs">
+          {/* 현재 월이 목록에 없을 경우 별도 탭 */}
+          {!availableMonths.includes(currentMonthKey) && (
+            <button
+              className={`mops-month-tab ${selectedMonth === currentMonthKey ? "mops-month-tab-active" : ""}`}
+              onClick={() => setSelectedMonth(currentMonthKey)}
+            >
+              {currentMonthKey} (당월)
+            </button>
+          )}
+          {availableMonths.map((m) => (
+            <button
+              key={m}
+              className={`mops-month-tab ${selectedMonth === m ? "mops-month-tab-active" : ""}`}
+              onClick={() => setSelectedMonth(m)}
+            >
+              {m}{m === currentMonthKey ? " (당월)" : ""}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── 월초 배너 (1~5일, 상수 없을 때) ── */}
       {showWarning && (
         <div className="mops-warning-banner">
           <span>
-            ⚠ 이번 달({monthKey}) 상수값(세금/프리미엄/관세/수입부과금)이 아직
+            ⚠ 이번 달({currentMonthKey}) 상수값(세금/프리미엄/관세/수입부과금)이 아직
             입력되지 않았습니다.
           </span>
           <button className="mops-warning-link" onClick={onOpenSettings}>
@@ -152,22 +197,24 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
         </div>
       )}
 
-      {/* ── 상수 없음 (월초 아닌 경우) ── */}
+      {/* ── 상수 없음 ── */}
       {missingConstants && !showWarning && (
         <div className="mops-no-data">
-          이번 달({monthKey}) 상수값이 없습니다.{" "}
-          <button
-            onClick={onOpenSettings}
-            style={{ color: "#7c3aed", background: "none", border: "none",
-              cursor: "pointer", textDecoration: "underline", padding: 0, fontSize: "inherit" }}
-          >
-            상수 설정
-          </button>
-          에서 입력해 주세요.
+          {selectedMonth} 상수값이 없습니다.{" "}
+          {isCurrentMonth && (
+            <button
+              onClick={onOpenSettings}
+              style={{ color: "#7c3aed", background: "none", border: "none",
+                cursor: "pointer", textDecoration: "underline", padding: 0, fontSize: "inherit" }}
+            >
+              상수 설정
+            </button>
+          )}
+          {isCurrentMonth && "에서 입력해 주세요."}
         </div>
       )}
 
-      {/* ── 결과 테이블 (전치 레이아웃: 행=지표, 열=유종) ── */}
+      {/* ── 결과 테이블 ── */}
       {!missingConstants && (
         <div className="mops-table-wrap">
           <table className="mops-table">
@@ -180,42 +227,49 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
               </tr>
             </thead>
             <tbody>
-              {/* 데일리 */}
+              {/* 데일리 — 당월에서만 표시 */}
+              {isCurrentMonth && (
+                <tr className="mops-tr">
+                  <td className="mops-td mops-td-fuel">
+                    데일리<br /><span className="mops-th-sub">오늘</span>
+                  </td>
+                  <td className="mops-td" style={{ fontWeight: 600 }}>{fmt(gas.daily)}</td>
+                  <td className="mops-td" style={{ fontWeight: 600 }}>{fmt(dsl.daily)}</td>
+                  <td className="mops-td" style={{ fontWeight: 600 }}>{fmt(kero.daily)}</td>
+                </tr>
+              )}
+              {/* 월 평균 */}
               <tr className="mops-tr">
                 <td className="mops-td mops-td-fuel">
-                  데일리<br /><span className="mops-th-sub">오늘</span>
-                </td>
-                <td className="mops-td" style={{ fontWeight: 600 }}>{fmt(gas.daily)}</td>
-                <td className="mops-td" style={{ fontWeight: 600 }}>{fmt(dsl.daily)}</td>
-                <td className="mops-td" style={{ fontWeight: 600 }}>{fmt(kero.daily)}</td>
-              </tr>
-              {/* 당월 평균 */}
-              <tr className="mops-tr">
-                <td className="mops-td mops-td-fuel">
-                  당월 평균<br /><span className="mops-th-sub">실적 기준</span>
+                  {isCurrentMonth ? "당월 평균" : "월 평균"}<br />
+                  <span className="mops-th-sub">실적 기준</span>
                 </td>
                 <td className="mops-td">{fmt(gas.monthlyAverage)}</td>
                 <td className="mops-td">{fmt(dsl.monthlyAverage)}</td>
                 <td className="mops-td">{fmt(kero.monthlyAverage)}</td>
               </tr>
-              {/* 당월 예측 평균 */}
-              <tr className="mops-tr">
-                <td className="mops-td mops-td-fuel mops-td-projected">
-                  당월 예측<br /><span className="mops-th-sub">잔여 {remainingWeekdays}평일 가정</span>
-                </td>
-                <td className="mops-td mops-td-projected">{fmt(gas.projectedMonthlyAverage)}</td>
-                <td className="mops-td mops-td-projected">{fmt(dsl.projectedMonthlyAverage)}</td>
-                <td className="mops-td mops-td-projected">{fmt(kero.projectedMonthlyAverage)}</td>
-              </tr>
-              {/* 당월比 */}
-              <tr className="mops-tr">
-                <td className="mops-td mops-td-fuel mops-td-rowdiff">
-                  당월比<br /><span className="mops-th-sub">데일리 − 당월예측</span>
-                </td>
-                <td className="mops-td mops-td-diff">{renderDiff(gas)}</td>
-                <td className="mops-td mops-td-diff">{renderDiff(dsl)}</td>
-                <td className="mops-td mops-td-diff">{renderDiff(kero)}</td>
-              </tr>
+              {/* 당월 예측 평균 — 당월에서만 표시 */}
+              {isCurrentMonth && (
+                <tr className="mops-tr">
+                  <td className="mops-td mops-td-fuel mops-td-projected">
+                    당월 예측<br /><span className="mops-th-sub">잔여 {remainingWeekdays}평일 가정</span>
+                  </td>
+                  <td className="mops-td mops-td-projected">{fmt(gas.projectedMonthlyAverage)}</td>
+                  <td className="mops-td mops-td-projected">{fmt(dsl.projectedMonthlyAverage)}</td>
+                  <td className="mops-td mops-td-projected">{fmt(kero.projectedMonthlyAverage)}</td>
+                </tr>
+              )}
+              {/* 당월比 — 당월에서만 표시 */}
+              {isCurrentMonth && (
+                <tr className="mops-tr">
+                  <td className="mops-td mops-td-fuel mops-td-rowdiff">
+                    당월比<br /><span className="mops-th-sub">데일리 − 당월예측</span>
+                  </td>
+                  <td className="mops-td mops-td-diff">{renderDiff(gas)}</td>
+                  <td className="mops-td mops-td-diff">{renderDiff(dsl)}</td>
+                  <td className="mops-td mops-td-diff">{renderDiff(kero)}</td>
+                </tr>
+              )}
             </tbody>
           </table>
 
