@@ -233,7 +233,12 @@ export default async function handler(req, res) {
     errors.push(`station fetch: ${e.message}`);
   }
 
-  // ─── 2. 국제지표 저장 (주말 제외 — carry-forward 방지) ───
+  // ─── 2. 국제지표 저장 ───
+  // [정책] carry-forward 방지 핵심 원칙:
+  //   - 제품가(MOPS): 싱가포르 영업일 기준 → 페트로넷 history에 오늘 날짜 키가 있을 때만 저장
+  //   - 환율: 한국 영업일 기준 → KMBCO history에 오늘 날짜 키가 있을 때만 저장
+  //   - 각국 공휴일이 달라 제품가는 있고 환율은 null이거나 반대일 수 있음 → 필드별 독립 처리
+  //   - 주말은 양쪽 모두 없으므로 저장 자체를 건너뜀
   const todayDow = new Date(todayKST).getDay(); // 0=일, 6=토
   if (todayDow !== 0 && todayDow !== 6) {
     try {
@@ -243,19 +248,30 @@ export default async function handler(req, res) {
       const petro = petroHtml ? parsePetronet(petroHtml) : null;
       const exch  = exchHtml  ? parseExchange(exchHtml)  : null;
 
+      // history에 오늘 날짜 키가 실제로 존재하는 경우만 값 사용, 없으면 null
+      // → 싱가포르/한국 공휴일로 당일 데이터가 없을 경우 전일 값이 저장되는 것을 방지
+      const fromHistory = (dataset) => dataset?.history?.[todayKST] ?? null;
+
       const intlRow = {
         date:        todayKST,
-        wti:         petro?.wti?.current         ?? null,
-        dubai:       petro?.dubai?.current        ?? null,
-        brent:       petro?.brent?.current        ?? null,
-        mops_gas:    petro?.mopsGasoline?.current ?? null,
-        mops_diesel: petro?.mopsDiesel?.current   ?? null,
-        mops_kero:   petro?.mopsKerosene?.current ?? null,
-        exch:        exch?.current                ?? null,
+        wti:         fromHistory(petro?.wti),
+        dubai:       fromHistory(petro?.dubai),
+        brent:       fromHistory(petro?.brent),
+        mops_gas:    fromHistory(petro?.mopsGasoline),
+        mops_diesel: fromHistory(petro?.mopsDiesel),
+        mops_kero:   fromHistory(petro?.mopsKerosene),
+        exch:        fromHistory(exch),
       };
 
-      const saveRes = await supaUpsert("intl_snapshots", intlRow);
-      if (!saveRes.ok) errors.push(`intl_snapshots upsert: ${saveRes.status}`);
+      // 모든 필드가 null이면 저장 불필요 (국경일 등으로 당일 데이터 미게시)
+      const hasAnyValue = Object.entries(intlRow)
+        .filter(([k]) => k !== "date")
+        .some(([, v]) => v !== null);
+
+      if (hasAnyValue) {
+        const saveRes = await supaUpsert("intl_snapshots", intlRow);
+        if (!saveRes.ok) errors.push(`intl_snapshots upsert: ${saveRes.status}`);
+      }
     } catch (e) {
       errors.push(`intl fetch: ${e.message}`);
     }
