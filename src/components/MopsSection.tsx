@@ -96,16 +96,9 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
     // 과거 월: remainingWeekdays=0, daily=null → 월 평균만 의미 있음
     const selRemaining = isCurrentMonth ? remainingWeekdays : 0;
 
-    // 오늘 날짜 키 (YYYY-MM-DD) — history에 실제 오늘 데이터가 있는지 확인용
-    const todayStr = `${todayYear}-${String(todayMonth + 1).padStart(2, "0")}-${String(today).padStart(2, "0")}`;
-    const todayEntry = history[todayStr] ?? null;
-
-    // daily 값은 history에 오늘 날짜 키가 실제로 존재할 때만 사용
-    // (페트로넷/환율 API는 마지막 영업일 값을 "current"로 반환하므로
-    //  오늘 데이터가 아직 없는 경우 전일 값이 데일리로 잘못 표시되는 것을 방지)
-    const dailyExch = isCurrentMonth && todayEntry?.exch != null
-      ? (intlData?.exch?.current ?? null)
-      : null;
+    // 페트로넷은 익일 오전에 전날 싱가포르 가격 게시
+    // → 4/3에는 4/2 싱가포르 가격이 current로 반환 → 이것이 오늘(4/3) 데일리
+    const dailyExch = isCurrentMonth ? (intlData?.exch?.current ?? null) : null;
 
     const exchValues = extractActualMonthlyValues(history, "exch", selYear, selMonthIdx);
 
@@ -114,9 +107,8 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       dailyValue:   number | null | undefined,
       productKey:   keyof typeof constants.products
     ): MopsResult => {
-      const hasTodayProduct = isCurrentMonth && todayEntry?.[productField] != null;
       return calculateProductSummary({
-        dailyProductPrice:    hasTodayProduct ? (dailyValue ?? null) : null,
+        dailyProductPrice:    isCurrentMonth ? (dailyValue ?? null) : null,
         dailyExchangeRate:    dailyExch,
         monthlyProductValues: extractActualMonthlyValues(history, productField, selYear, selMonthIdx),
         monthlyExchValues:    exchValues,

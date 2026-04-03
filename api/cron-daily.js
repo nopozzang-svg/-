@@ -248,9 +248,9 @@ export default async function handler(req, res) {
       const petro = petroHtml ? parsePetronet(petroHtml) : null;
       const exch  = exchHtml  ? parseExchange(exchHtml)  : null;
 
-      // history에 오늘 날짜 키가 실제로 존재하는 경우만 값 사용, 없으면 null
-      // → 싱가포르/한국 공휴일로 당일 데이터가 없을 경우 전일 값이 저장되는 것을 방지
-      const fromHistory = (dataset) => dataset?.history?.[todayKST] ?? null;
+      // 페트로넷은 익일 오전에 전날 싱가포르 가격 게시
+      // → current = 가장 최근 영업일 가격 (오늘 날짜로 저장해 데일리로 사용)
+      const fromHistory = (dataset) => dataset?.current ?? null;
 
       const intlRow = {
         date:        todayKST,
