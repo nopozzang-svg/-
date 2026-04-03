@@ -22,12 +22,6 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 ══════════════════════════════════════ */
 const INTL_HISTORY_KEY = "sail_intl_history";
 
-/* 전월 평균 — 사용자 직접 제공 데이터
-   형식: { "YYYY-MM": { wti, dubai, exch, mopsGas, mopsDiesel, mopsKero } }
-   값이 없는 달은 null 로 두면 "—" 표시됨 */
-const INTL_PREV_MONTH_DATA = {
-  "2026-02": { wti: 64.52, dubai: 68.4, exch: 1449.32, mopsGas: 75.27, mopsDiesel: 89.93, mopsKero: 89.02 },
-};
 
 /** 페트로넷/KMBCO history 를 localStorage 에 병합 저장 */
 const mergeIntlHistory = (petroData, exchData) => {
@@ -104,14 +98,24 @@ const calcMonthStats = (field) => {
   } catch (_) { return null; }
 };
 
-/** 전월 평균 반환 (INTL_PREV_MONTH_DATA 에서 조회) */
+/** 전월 평균 반환 — Supabase에서 로드된 localStorage history 기반 계산 */
 const getPrevMonthAvg = (field) => {
-  const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  let year  = nowKST.getUTCFullYear();
-  let month = nowKST.getUTCMonth(); // 0-indexed → 1 빼면 전월
-  if (month === 0) { month = 12; year--; } // 1월이면 작년 12월
-  const key = `${year}-${String(month).padStart(2, "0")}`;
-  return INTL_PREV_MONTH_DATA[key]?.[field] ?? null;
+  try {
+    const stored = JSON.parse(localStorage.getItem(INTL_HISTORY_KEY) || "{}");
+    const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const year  = nowKST.getUTCMonth() === 0 ? nowKST.getUTCFullYear() - 1 : nowKST.getUTCFullYear();
+    const month = nowKST.getUTCMonth() === 0 ? 11 : nowKST.getUTCMonth() - 1; // 0-indexed 전월
+    const values = Object.entries(stored)
+      .filter(([date]) => {
+        const d = new Date(date);
+        const dow = d.getDay();
+        return d.getFullYear() === year && d.getMonth() === month && dow !== 0 && dow !== 6;
+      })
+      .map(([, v]) => v[field])
+      .filter(v => v != null && !isNaN(v));
+    if (!values.length) return null;
+    return values.reduce((s, v) => s + v, 0) / values.length;
+  } catch (_) { return null; }
 };
 
 /** Supabase에서 전일 주유소 스냅샷 + 당월 국제지표를 가져와 localStorage에 병합
@@ -121,11 +125,15 @@ const loadFromSupabase = async () => {
     const yesterday   = getKSTYesterdayStr();
     const nowKST      = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const monthStart  = `${nowKST.getUTCFullYear()}-${String(nowKST.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    // 전월 첫날 계산 (전월 평균 표시용)
+    const prevY = nowKST.getUTCMonth() === 0 ? nowKST.getUTCFullYear() - 1 : nowKST.getUTCFullYear();
+    const prevM = nowKST.getUTCMonth() === 0 ? 12 : nowKST.getUTCMonth();
+    const prevMonthStart = `${prevY}-${String(prevM).padStart(2, "0")}-01`;
     const supaHeaders = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
 
     const [snapRes, intlRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/station_snapshots?date=eq.${yesterday}&select=snapshot`, { headers: supaHeaders }),
-      fetch(`${SUPABASE_URL}/rest/v1/intl_snapshots?date=gte.${monthStart}&select=date,wti,dubai,mops_gas,mops_diesel,mops_kero,exch`, { headers: supaHeaders }),
+      fetch(`${SUPABASE_URL}/rest/v1/intl_snapshots?date=gte.${prevMonthStart}&select=date,wti,dubai,mops_gas,mops_diesel,mops_kero,exch`, { headers: supaHeaders }),
     ]);
 
     // 전일 주유소 스냅샷 → localStorage
