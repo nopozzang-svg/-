@@ -23,6 +23,11 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const INTL_HISTORY_KEY = "sail_intl_history";
 
 
+/* Supabase 데이터 없을 때 사용할 전월 평균 폴백 */
+const INTL_PREV_MONTH_FALLBACK = {
+  "2026-03": { wti: 91, dubai: 128.52, mopsGas: 128.82, mopsKero: 195.38, mopsDiesel: 192.84, exch: 1486.64 },
+};
+
 /** 페트로넷/KMBCO history 를 localStorage 에 병합 저장 */
 const mergeIntlHistory = (petroData, exchData) => {
   try {
@@ -105,6 +110,7 @@ const getPrevMonthAvg = (field) => {
     const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const year  = nowKST.getUTCMonth() === 0 ? nowKST.getUTCFullYear() - 1 : nowKST.getUTCFullYear();
     const month = nowKST.getUTCMonth() === 0 ? 11 : nowKST.getUTCMonth() - 1; // 0-indexed 전월
+    const fallbackKey = `${year}-${String(month + 1).padStart(2, "0")}`;
     const values = Object.entries(stored)
       .filter(([date]) => {
         const d = new Date(date);
@@ -113,7 +119,7 @@ const getPrevMonthAvg = (field) => {
       })
       .map(([, v]) => v[field])
       .filter(v => v != null && !isNaN(v));
-    if (!values.length) return null;
+    if (!values.length) return INTL_PREV_MONTH_FALLBACK[fallbackKey]?.[field] ?? null;
     return values.reduce((s, v) => s + v, 0) / values.length;
   } catch (_) { return null; }
 };
