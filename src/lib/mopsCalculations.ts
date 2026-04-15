@@ -106,9 +106,14 @@ export function extractActualMonthlyValues(
   year: number,
   month: number,
 ): number[] {
+  // KST 기준 오늘 날짜 — Petronet 1일 lag으로 인해 오늘 history 항목은
+  // 실제 어제 싱가포르 가격이므로 월 평균에서 제외 (이중 계산 방지)
+  const kstToday = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().substring(0, 10);
+
   return Object.entries(history)
     .filter(([date]) => {
-      const d = new Date(date);
+      if (date === kstToday) return false; // 오늘 제외
+      const d = new Date(date + "T12:00:00Z"); // UTC 정오 기준 파싱 (요일 오차 방지)
       const dow = d.getDay(); // 0=일, 6=토
       return d.getFullYear() === year && d.getMonth() === month && dow !== 0 && dow !== 6;
     })
@@ -183,8 +188,10 @@ export function calculateProductSummary({
   }
 
   // ── 3. 당월 예측 평균 ──
+  // todayProduct: history 마지막값 (= Petronet 1일 lag → 어제 싱가포르 가격 = 오늘 데일리)
+  // todayExch:    dailyExchangeRate 우선 (오늘 실제 환율), 없으면 history 마지막값
   const todayProduct  = monthlyProductValues.at(-1) ?? null;
-  const todayExch     = monthlyExchValues.at(-1)    ?? null;
+  const todayExch     = dailyExchangeRate ?? monthlyExchValues.at(-1) ?? null;
   const actualCount   = monthlyProductValues.length;
 
   if (todayProduct != null && todayExch != null && actualCount > 0) {
