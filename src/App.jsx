@@ -137,9 +137,11 @@ const loadFromSupabase = async () => {
     const prevMonthStart = `${prevY}-${String(prevM).padStart(2, "0")}-01`;
     const supaHeaders = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` };
 
-    const [snapRes, intlRes] = await Promise.all([
+    const today = getKSTDateStr();
+    const [snapRes, intlRes, todaySnapRes] = await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/station_snapshots?date=eq.${yesterday}&select=snapshot`, { headers: supaHeaders }),
       fetch(`${SUPABASE_URL}/rest/v1/intl_snapshots?date=gte.${prevMonthStart}&select=date,wti,dubai,mops_gas,mops_diesel,mops_kero,exch`, { headers: supaHeaders }),
+      fetch(`${SUPABASE_URL}/rest/v1/station_snapshots?date=eq.${today}&select=snapshot`, { headers: supaHeaders }),
     ]);
 
     // 전일 주유소 스냅샷 → localStorage
@@ -150,6 +152,19 @@ const loadFromSupabase = async () => {
         // 로컬에 어제 데이터가 없거나 비실시간(_live 없음)인 경우만 덮어쓰기
         if (!history[yesterday]?._live) {
           history[yesterday] = rows[0].snapshot;
+          localStorage.setItem(STORE_KEY, JSON.stringify(history));
+        }
+      }
+    }
+
+    // 오늘 주유소 스냅샷 → localStorage (크론 실행 후 live fetch 실패 시 fallback용)
+    if (todaySnapRes.ok) {
+      const rows = await todaySnapRes.json();
+      if (rows.length > 0 && rows[0].snapshot) {
+        const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+        // 오늘 실시간(_live) 데이터가 없는 경우만 Supabase 크론 데이터로 채움
+        if (!history[today]?._live) {
+          history[today] = rows[0].snapshot;
           localStorage.setItem(STORE_KEY, JSON.stringify(history));
         }
       }
@@ -1206,9 +1221,46 @@ export default function SailDashboard() {
           regionAvg: gyeonggiKeroAvg,
         })));
       } else {
-        // API 호출은 성공했지만 가격 데이터가 없는 경우
-        setData(prev => ({ ...prev, date: today, nationalAvg }));
-        setApiStatus("error");
+        // opinet 완전 실패 — Supabase 크론 캐시 fallback
+        const history = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+        const cachedDates = Object.keys(history).filter(d => history[d]?._live).sort().reverse();
+        const cached = cachedDates.length ? { date: cachedDates[0], snapshot: history[cachedDates[0]] } : null;
+
+        if (cached) {
+          const buildCachedGroups = (groupDefs) => groupDefs.map(g => ({
+            name: g.name,
+            sail: {
+              name: g.sail.name,
+              gasoline: cached.snapshot[g.name]?.sg || 0,
+              diesel:   cached.snapshot[g.name]?.sd || 0,
+              prevGasoline: null,
+              prevDiesel:   null,
+            },
+            competitors: g.competitors.map(c => ({
+              name:        c.name,
+              gasoline:    cached.snapshot[g.name]?.comp?.[c.name]?.g || 0,
+              diesel:      cached.snapshot[g.name]?.comp?.[c.name]?.d || 0,
+              prevGasoline: null,
+              prevDiesel:   null,
+            })),
+          }));
+          const cachedGroups      = buildCachedGroups(STATION_GROUPS);
+          const cachedChainGroups = buildCachedGroups(CHAIN_GROUPS);
+          const prevData = loadPrevDayData();
+          if (prevData) setPrevDateLabel(prevData.date);
+          setData(prev => ({
+            ...prev,
+            date: cached.date,
+            nationalAvg,
+            groups:      applyPrevDiffs(cachedGroups, prevData),
+            chainGroups: applyPrevDiffs(cachedChainGroups, prevData),
+          }));
+          setLastFetchTime(`${cached.date} (크론 캐시)`);
+          setApiStatus("live");
+        } else {
+          setData(prev => ({ ...prev, date: today, nationalAvg }));
+          setApiStatus("error");
+        }
       }
     } catch (e) {
       console.error("API fetch failed:", e);
