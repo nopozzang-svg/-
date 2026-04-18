@@ -977,10 +977,84 @@ export default function SailDashboard() {
   // 3) 실시간 API 자동 호출 (전일 실데이터 없으면 전일대비 "—" 표시)
   useEffect(() => {
     cleanCorruptedHistory();
-    // Supabase 동기화 완료 후 라이브 데이터 fetch (전일비 정확성 보장)
-    loadFromSupabase().finally(() => fetchLiveData());
+    // 1차: 즉시 intl 데이터 표시 (캐시 또는 live fetch)
     fetchIntlData();
+    // Supabase 동기화 완료 후:
+    //   - 주유소 live 데이터 fetch (전일비 정확성 보장)
+    //   - intl 재호출 → Supabase 히스토리가 채워진 상태에서 Supabase 보정 적용
+    loadFromSupabase().finally(() => {
+      fetchLiveData();
+      fetchIntlData(); // INTL_HISTORY_KEY 채운 뒤 재보정
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Supabase intl_snapshots 히스토리로 live 데이터 보정
+  // — live API가 오래된 날짜를 반환할 때(NaN 파싱 오류, 사이트 지연 등) Supabase 최신값으로 덮어씀
+  const supplementIntlFromSupabase = (liveData) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(INTL_HISTORY_KEY) || "{}");
+      const storedDates = Object.keys(stored).sort();
+      if (!storedDates.length) return liveData;
+
+      const supaLastDate = storedDates[storedDates.length - 1];
+      const liveLastDate = liveData?.petro?.wti?.history
+        ? Object.keys(liveData.petro.wti.history).sort().pop()
+        : null;
+
+      // Supabase가 더 최신인 경우만 보정
+      if (liveLastDate && supaLastDate <= liveLastDate) return liveData;
+
+      const latest = stored[supaLastDate];
+      const prevDate = storedDates[storedDates.length - 2];
+      const prev = prevDate ? stored[prevDate] : null;
+
+      const patched = JSON.parse(JSON.stringify(liveData || {}));
+      if (!patched.petro) patched.petro = {};
+
+      // petro 필드 보정 (supaKey: INTL_HISTORY_KEY 키명, petroKey: intlData.petro 키명)
+      [
+        ["wti",        "wti",         2],
+        ["dubai",      "dubai",       2],
+        ["mopsGas",    "mopsGasoline",2],
+        ["mopsDiesel", "mopsDiesel",  2],
+        ["mopsKero",   "mopsKerosene",2],
+      ].forEach(([supaKey, petroKey, dp]) => {
+        const cur = latest?.[supaKey] ?? null;
+        if (cur === null) return;
+        const prv = prev?.[supaKey] ?? null;
+        const existing = patched.petro[petroKey] || { history: {} };
+        const newHist = { ...(existing.history || {}), [supaLastDate]: cur };
+        if (prv !== null && prevDate) newHist[prevDate] = prv;
+        patched.petro[petroKey] = {
+          ...existing,
+          current: cur,
+          prev: prv,
+          change: prv !== null ? +(cur - prv).toFixed(dp) : null,
+          history: newHist,
+        };
+      });
+
+      // 환율 보정
+      const exchCur = latest?.exch ?? null;
+      if (exchCur !== null) {
+        const exchPrv = prev?.exch ?? null;
+        const existingExch = patched.exch || { history: {} };
+        const newExchHist = { ...(existingExch.history || {}), [supaLastDate]: exchCur };
+        if (exchPrv !== null && prevDate) newExchHist[prevDate] = exchPrv;
+        patched.exch = {
+          ...existingExch,
+          current: exchCur,
+          prev: exchPrv,
+          change: exchPrv !== null ? +(exchCur - exchPrv).toFixed(1) : null,
+          history: newExchHist,
+        };
+      }
+
+      return patched;
+    } catch (_) {
+      return liveData;
+    }
+  };
 
   const fetchIntlData = async () => {
     const INTL_KEY = "sail_intl_prices";
@@ -1003,17 +1077,18 @@ export default function SailDashboard() {
         cached.data?.petro?.wti?.history &&
         cached.fetchedAt > twoHoursAgo
       ) {
-        setIntlData(cached.data);
-        mergeIntlHistory(cached.data.petro, cached.data.exch);
+        const data = supplementIntlFromSupabase(cached.data);
+        setIntlData(data);
+        mergeIntlHistory(data.petro, data.exch);
         return;
       }
     } catch (_) {}
 
-    // 08:00 이전이면 외부 요청 하지 않고 전날 캐시 표시
+    // 08:00 이전이면 외부 요청 하지 않고 전날 캐시 표시 (Supabase 보정 포함)
     if (!after8am) {
       try {
         const cached = JSON.parse(localStorage.getItem(INTL_KEY) || "null");
-        if (cached?.data) setIntlData(cached.data);
+        if (cached?.data) setIntlData(supplementIntlFromSupabase(cached.data));
       } catch (_) {}
       return;
     }
@@ -1028,16 +1103,17 @@ export default function SailDashboard() {
       if (!petroRes.ok || !exchRes.ok) throw new Error("API error");
       const petro = await petroRes.json();
       const exch  = await exchRes.json();
-      const data  = { petro, exch };
+      const raw   = { petro, exch };
+      const data  = supplementIntlFromSupabase(raw);
       setIntlData(data);
       localStorage.setItem(INTL_KEY, JSON.stringify({ date: todayStr, fetchedAfter8: true, fetchedAt: Date.now(), data }));
-      mergeIntlHistory(petro, exch);
+      mergeIntlHistory(data.petro, data.exch);
     } catch (e) {
       console.warn("International data fetch failed:", e);
-      // fetch 실패 시 이전 캐시라도 표시
+      // fetch 실패 시 이전 캐시라도 표시 (Supabase 보정 포함)
       try {
         const cached = JSON.parse(localStorage.getItem(INTL_KEY) || "null");
-        if (cached?.data) setIntlData(cached.data);
+        if (cached?.data) setIntlData(supplementIntlFromSupabase(cached.data));
       } catch (_) {}
     }
     setIntlLoading(false);

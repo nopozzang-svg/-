@@ -106,14 +106,16 @@ const parsePetronet = (html) => {
     const re = new RegExp(`label\\s*:\\s*["']${escaped}["'][\\s\\S]*?data\\s*:\\s*\\[([^\\]]+)\\]`);
     const m = section.match(re);
     if (!m) return null;
-    const arr = m[1].split(",").map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
-    if (arr.length < 2) return null;
+    // 인덱스 정합성 유지: NaN 필터 전 원본 배열로 labels↔data 매핑
+    const rawArr = m[1].split(",").map(v => parseFloat(v.trim()));
     const history = {};
     labels.forEach((lbl, i) => {
       const dateStr = labelToDate(lbl);
-      if (dateStr && arr[i] != null) history[dateStr] = arr[i];
+      if (dateStr && i < rawArr.length && !isNaN(rawArr[i])) history[dateStr] = rawArr[i];
     });
-    return { current: arr[arr.length - 1], prev: arr[arr.length - 2], history };
+    const validArr = rawArr.filter(v => !isNaN(v));
+    if (validArr.length < 2) return null;
+    return { current: validArr[validArr.length - 1], prev: validArr[validArr.length - 2], history };
   };
 
   const oilSection  = getChartSection("interOilPriceChartOpt");
@@ -135,12 +137,14 @@ const parseExchange = (html) => {
   const rateMatch = html.match(/name\s*:\s*['"]환율['"]\s*,\s*data\s*:\s*\[([^\]]+)\]/);
   if (!rateMatch) return null;
 
-  const rates = rateMatch[1].split(",").map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+  // 인덱스 정합성 유지: NaN 필터 전 원본 배열로 cats↔rates 매핑
+  const rawRates = rateMatch[1].split(",").map(v => parseFloat(v.trim()));
   const rawCats = catMatch
     ? catMatch[1].split(",").map(s => s.trim().replace(/['"]/g, ""))
     : [];
 
-  if (rates.length < 2) return null;
+  const validRates = rawRates.filter(v => !isNaN(v));
+  if (validRates.length < 2) return null;
 
   const catToDate = (cat) => {
     const parts = cat.split("/");
@@ -152,12 +156,12 @@ const parseExchange = (html) => {
   const history = {};
   rawCats.forEach((cat, i) => {
     const dateStr = catToDate(cat);
-    if (dateStr && rates[i] != null) history[dateStr] = rates[i];
+    if (dateStr && i < rawRates.length && !isNaN(rawRates[i])) history[dateStr] = rawRates[i];
   });
 
   return {
-    current: rates[rates.length - 1],
-    prev:    rates[rates.length - 2],
+    current: validRates[validRates.length - 1],
+    prev:    validRates[validRates.length - 2],
     history,
   };
 };

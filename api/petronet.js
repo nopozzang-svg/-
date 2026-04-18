@@ -52,18 +52,22 @@ export default async function handler(req, res) {
       const re = new RegExp(`label\\s*:\\s*["']${escaped}["'][\\s\\S]*?data\\s*:\\s*\\[([^\\]]+)\\]`);
       const m = section.match(re);
       if (!m) return null;
-      const arr = m[1].split(",").map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
-      if (arr.length < 2) return null;
 
-      // 날짜 → 값 매핑 (history)
+      // 인덱스 정합성 유지: NaN 필터 전 원본 배열로 labels↔data 매핑
+      const rawArr = m[1].split(",").map(v => parseFloat(v.trim()));
+
+      // 날짜 → 값 매핑 (history) — rawArr 인덱스와 labels 인덱스를 동일하게 사용
       const history = {};
       labels.forEach((lbl, i) => {
         const dateStr = labelToDate(lbl);
-        if (dateStr && arr[i] != null) history[dateStr] = arr[i];
+        if (dateStr && i < rawArr.length && !isNaN(rawArr[i])) history[dateStr] = rawArr[i];
       });
 
-      const current = arr[arr.length - 1];
-      const prev    = arr[arr.length - 2];
+      // current/prev: 마지막 유효(non-NaN) 값 두 개
+      const validArr = rawArr.filter(v => !isNaN(v));
+      if (validArr.length < 2) return null;
+      const current = validArr[validArr.length - 1];
+      const prev    = validArr[validArr.length - 2];
       return { current, prev, change: +(current - prev).toFixed(2), history };
     };
 

@@ -26,12 +26,14 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Exchange rate parse failed" });
     }
 
-    const rates = rateMatch[1].split(",").map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+    // 인덱스 정합성 유지: NaN 필터 전 원본 배열로 cats↔rates 매핑
+    const rawRates = rateMatch[1].split(",").map(v => parseFloat(v.trim()));
     const rawCats = catMatch
       ? catMatch[1].split(",").map(s => s.trim().replace(/['"]/g, ""))
       : [];
 
-    if (rates.length < 2) {
+    const validRates = rawRates.filter(v => !isNaN(v));
+    if (validRates.length < 2) {
       return res.status(500).json({ error: "Insufficient rate data" });
     }
 
@@ -43,15 +45,15 @@ export default async function handler(req, res) {
       return `${year}-${parts[1]}-${parts[2]}`;
     };
 
-    // 날짜 → 환율 매핑 (history)
+    // 날짜 → 환율 매핑 (history) — rawRates 인덱스와 rawCats 인덱스를 동일하게 사용
     const history = {};
     rawCats.forEach((cat, i) => {
       const dateStr = catToDate(cat);
-      if (dateStr && rates[i] != null) history[dateStr] = rates[i];
+      if (dateStr && i < rawRates.length && !isNaN(rawRates[i])) history[dateStr] = rawRates[i];
     });
 
-    const current = rates[rates.length - 1];
-    const prev    = rates[rates.length - 2];
+    const current = validRates[validRates.length - 1];
+    const prev    = validRates[validRates.length - 2];
 
     // CDN 캐시 비활성화 — 프론트엔드 localStorage에서 캐싱 처리
     res.setHeader("Cache-Control", "no-store");
