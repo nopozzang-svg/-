@@ -1,28 +1,39 @@
-// Vercel Serverless Function — Opinet API 프록시
-// 브라우저 CORS 우회: 클라이언트 → /api/opinet → (서버) → opinet.co.kr
-export default async function handler(req, res) {
+// Vercel Edge Function — Opinet API 프록시
+// Edge Runtime: Cloudflare 기반, 사용자 근처(한국) 노드에서 실행 → opinet.co.kr 접근 가능
+export const config = { runtime: "edge" };
+
+export default async function handler(req) {
   const API_KEY = "F250430333";
   const OPINET_BASE = "https://www.opinet.co.kr/api";
 
-  const { endpoint, ...rest } = req.query;
+  const { searchParams } = new URL(req.url);
+  const endpoint = searchParams.get("endpoint");
 
   if (!endpoint) {
-    return res.status(400).json({ error: "endpoint query param is required" });
+    return new Response(JSON.stringify({ error: "endpoint query param is required" }), { status: 400 });
   }
 
-  const params = new URLSearchParams({ code: API_KEY, out: "json", ...rest });
-  const url = `${OPINET_BASE}/${endpoint}?${params}`;
+  // endpoint 파라미터 제외한 나머지 쿼리스트링 전달
+  searchParams.delete("endpoint");
+  searchParams.set("code", API_KEY);
+  searchParams.set("out", "json");
+
+  const url = `${OPINET_BASE}/${endpoint}?${searchParams}`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(9000) });
     if (!response.ok) {
-      return res.status(response.status).json({ error: "Opinet upstream error", v: 3 });
+      return new Response(JSON.stringify({ error: "Opinet upstream error", status: response.status }), { status: response.status });
     }
     const data = await response.json();
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate");
-    return res.status(200).json(data);
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "s-maxage=300, stale-while-revalidate",
+      },
+    });
   } catch (err) {
-    console.error("Opinet proxy error:", err.message, err.cause);
-    return res.status(500).json({ error: err.message, cause: String(err.cause), v: 3 });
+    return new Response(JSON.stringify({ error: err.message, v: 4 }), { status: 500 });
   }
 }
