@@ -1038,14 +1038,12 @@ export default function SailDashboard() {
         if (cur === null) return;
         const prv = prev?.[supaKey] ?? null;
         const existing = patched.petro[petroKey] || { history: {} };
-        const newHist = { ...(existing.history || {}), [supaLastDate]: cur };
-        if (prv !== null && prevDate) newHist[prevDate] = prv;
         patched.petro[petroKey] = {
           ...existing,
           current: cur,
           prev: prv,
           change: prv !== null ? +(cur - prv).toFixed(dp) : null,
-          history: newHist,
+          history: existing.history || {},
         };
       });
 
@@ -1054,14 +1052,12 @@ export default function SailDashboard() {
       if (exchCur !== null) {
         const exchPrv = prev?.exch ?? null;
         const existingExch = patched.exch || { history: {} };
-        const newExchHist = { ...(existingExch.history || {}), [supaLastDate]: exchCur };
-        if (exchPrv !== null && prevDate) newExchHist[prevDate] = exchPrv;
         patched.exch = {
           ...existingExch,
           current: exchCur,
           prev: exchPrv,
           change: exchPrv !== null ? +(exchCur - exchPrv).toFixed(1) : null,
-          history: newExchHist,
+          history: existingExch.history || {},
         };
       }
 
