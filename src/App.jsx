@@ -1111,13 +1111,16 @@ export default function SailDashboard() {
         fetch("/api/petronet"),
         fetch("/api/exchange"),
       ]);
-      if (!petroRes.ok || !exchRes.ok) throw new Error("API error");
-      const petro = await petroRes.json();
-      const exch  = await exchRes.json();
+      const petro = petroRes.ok ? await petroRes.json() : null;
+      const exch  = exchRes.ok  ? await exchRes.json()  : null;
+      if (!petro && !exch) throw new Error("Both APIs failed");
       const raw   = { petro, exch };
       const data  = supplementIntlFromSupabase(raw);
       setIntlData(data);
-      localStorage.setItem(INTL_KEY, JSON.stringify({ date: todayStr, fetchedAfter8: true, fetchedAt: Date.now(), data }));
+      // petro 데이터가 있을 때만 캐시 저장 (exchange만 실패한 경우 포함)
+      if (petro) {
+        localStorage.setItem(INTL_KEY, JSON.stringify({ date: todayStr, fetchedAfter8: true, fetchedAt: Date.now(), data }));
+      }
       mergeIntlHistory(data.petro, data.exch);
     } catch (e) {
       console.warn("International data fetch failed:", e);

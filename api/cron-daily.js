@@ -195,10 +195,10 @@ export default async function handler(req, res) {
       )
     ),
     // 페트로넷
-    fetch("https://www.petronet.co.kr/v4/main.jsp", { headers: { ...intlHeaders, Referer: "https://www.petronet.co.kr/" } })
+    fetch("https://www.petronet.co.kr/v4/main.jsp", { headers: { ...intlHeaders, Referer: "https://www.petronet.co.kr/" }, signal: AbortSignal.timeout(8000) })
       .catch(() => null),
     // KMBCO 환율
-    fetch("https://www.kmbco.com/kor/rate/exchange_rate.do", { headers: { ...intlHeaders, Referer: "https://www.kmbco.com/" } })
+    fetch("https://www.kmbco.com/kor/rate/exchange_rate.do", { headers: { ...intlHeaders, Referer: "https://www.kmbco.com/" }, signal: AbortSignal.timeout(8000) })
       .catch(() => null),
   ]);
 

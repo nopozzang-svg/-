@@ -1,6 +1,8 @@
-// Vercel Serverless Function — KMBCO 원/달러 환율 스크래퍼
-// history 포함 (당월 평균 계산용)
-export default async function handler(req, res) {
+// Vercel Edge Function — KMBCO 원/달러 환율 스크래퍼
+// Edge Runtime: 한국 노드에서 실행 → kmbco.com 접근 가능
+export const config = { runtime: "edge" };
+
+export default async function handler(req) {
   try {
     const response = await fetch("https://www.kmbco.com/kor/rate/exchange_rate.do", {
       headers: {
@@ -9,10 +11,11 @@ export default async function handler(req, res) {
         "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
         "Referer": "https://www.kmbco.com/",
       },
+      signal: AbortSignal.timeout(9000),
     });
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: "KMBCO upstream error" });
+      return new Response(JSON.stringify({ error: "KMBCO upstream error" }), { status: response.status });
     }
 
     const html = await response.text();
@@ -23,7 +26,7 @@ export default async function handler(req, res) {
     const rateMatch = html.match(/name\s*:\s*['"]환율['"]\s*,\s*data\s*:\s*\[([^\]]+)\]/);
 
     if (!rateMatch) {
-      return res.status(500).json({ error: "Exchange rate parse failed" });
+      return new Response(JSON.stringify({ error: "Exchange rate parse failed" }), { status: 500 });
     }
 
     // 인덱스 정합성 유지: NaN 필터 전 원본 배열로 cats↔rates 매핑
@@ -34,7 +37,7 @@ export default async function handler(req, res) {
 
     const validRates = rawRates.filter(v => !isNaN(v));
     if (validRates.length < 2) {
-      return res.status(500).json({ error: "Insufficient rate data" });
+      return new Response(JSON.stringify({ error: "Insufficient rate data" }), { status: 500 });
     }
 
     // 'YY/MM/DD' → 'YYYY-MM-DD' 변환
@@ -55,17 +58,17 @@ export default async function handler(req, res) {
     const current = validRates[validRates.length - 1];
     const prev    = validRates[validRates.length - 2];
 
-    // CDN 캐시 비활성화 — 프론트엔드 localStorage에서 캐싱 처리
-    res.setHeader("Cache-Control", "no-store");
-    return res.status(200).json({
+    return new Response(JSON.stringify({
       current,
       prev,
       change: +(current - prev).toFixed(1),
       date:   rawCats[rawCats.length - 1] ?? null,
       history,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
   } catch (err) {
-    console.error("Exchange rate error:", err);
-    return res.status(500).json({ error: err.message });
+    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 }
