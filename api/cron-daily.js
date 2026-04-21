@@ -76,95 +76,6 @@ const supaUpsert = (table, data) =>
     body: JSON.stringify(data),
   });
 
-// ─── Petronet 파싱 (api/petronet.js 동일 로직) ───
-const parsePetronet = (html) => {
-  const getChartSection = (name) => {
-    const start = html.indexOf(`const ${name}`);
-    if (start === -1) return "";
-    const nextConst = html.indexOf("const ", start + name.length + 6);
-    return nextConst === -1 ? html.slice(start) : html.slice(start, nextConst);
-  };
-
-  const labelToDate = (label) => {
-    const parts = label.split(".");
-    if (parts.length !== 2) return null;
-    const m = parseInt(parts[0], 10);
-    const d = parseInt(parts[1], 10);
-    if (isNaN(m) || isNaN(d)) return null;
-    const now = new Date();
-    const curMonth = now.getMonth() + 1;
-    const year = m > curMonth + 6 ? now.getFullYear() - 1 : now.getFullYear();
-    return `${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  };
-
-  const getDataset = (section, label) => {
-    const labelMatch = section.match(/labels\s*:\s*\[([^\]]+)\]/);
-    const labels = labelMatch
-      ? labelMatch[1].split(",").map(s => s.trim().replace(/['"]/g, ""))
-      : [];
-    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`label\\s*:\\s*["']${escaped}["'][\\s\\S]*?data\\s*:\\s*\\[([^\\]]+)\\]`);
-    const m = section.match(re);
-    if (!m) return null;
-    // 인덱스 정합성 유지: NaN 필터 전 원본 배열로 labels↔data 매핑
-    const rawArr = m[1].split(",").map(v => parseFloat(v.trim()));
-    const history = {};
-    labels.forEach((lbl, i) => {
-      const dateStr = labelToDate(lbl);
-      if (dateStr && i < rawArr.length && !isNaN(rawArr[i])) history[dateStr] = rawArr[i];
-    });
-    const validArr = rawArr.filter(v => !isNaN(v));
-    if (validArr.length < 2) return null;
-    return { current: validArr[validArr.length - 1], prev: validArr[validArr.length - 2], history };
-  };
-
-  const oilSection  = getChartSection("interOilPriceChartOpt");
-  const prodSection = getChartSection("interProdPriceChartOpt");
-
-  return {
-    wti:          getDataset(oilSection,  "WTI (NYMEX)"),
-    dubai:        getDataset(oilSection,  "Dubai"),
-    brent:        getDataset(oilSection,  "Brent (ICE)"),
-    mopsGasoline: getDataset(prodSection, "휘발유"),
-    mopsDiesel:   getDataset(prodSection, "경유"),
-    mopsKerosene: getDataset(prodSection, "등유"),
-  };
-};
-
-// ─── KMBCO 환율 파싱 (api/exchange.js 동일 로직) ───
-const parseExchange = (html) => {
-  const catMatch  = html.match(/categories\s*:\s*\[([^\]]+)\]/);
-  const rateMatch = html.match(/name\s*:\s*['"]환율['"]\s*,\s*data\s*:\s*\[([^\]]+)\]/);
-  if (!rateMatch) return null;
-
-  // 인덱스 정합성 유지: NaN 필터 전 원본 배열로 cats↔rates 매핑
-  const rawRates = rateMatch[1].split(",").map(v => parseFloat(v.trim()));
-  const rawCats = catMatch
-    ? catMatch[1].split(",").map(s => s.trim().replace(/['"]/g, ""))
-    : [];
-
-  const validRates = rawRates.filter(v => !isNaN(v));
-  if (validRates.length < 2) return null;
-
-  const catToDate = (cat) => {
-    const parts = cat.split("/");
-    if (parts.length !== 3) return null;
-    const year = parseInt(parts[0], 10) + 2000;
-    return `${year}-${parts[1]}-${parts[2]}`;
-  };
-
-  const history = {};
-  rawCats.forEach((cat, i) => {
-    const dateStr = catToDate(cat);
-    if (dateStr && i < rawRates.length && !isNaN(rawRates[i])) history[dateStr] = rawRates[i];
-  });
-
-  return {
-    current: validRates[validRates.length - 1],
-    prev:    validRates[validRates.length - 2],
-    history,
-  };
-};
 
 // ─── Main Handler ───
 export default async function handler(req, res) {
@@ -174,15 +85,12 @@ export default async function handler(req, res) {
   const errors = [];
 
   // 주유소 게시가 + 국제지표 완전 병렬 실행 (10초 제한 대응)
-  const intlHeaders = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
-  };
-
   const stationIds = [...new Set(
     ALL_GROUPS.flatMap(g => [g.sail.id, ...g.competitors.map(c => c.id)])
   )];
+
+  // 국제지표: Edge Runtime API 경유 (한국 IP 필요 — 크론은 US 노드라 직접 호출 불가)
+  const apiBase = `https://${process.env.VERCEL_URL}`;
 
   // 모든 외부 요청 동시 시작
   const [stationFetched, petroRes, exchRes] = await Promise.all([
@@ -194,12 +102,10 @@ export default async function handler(req, res) {
           .catch(() => null)
       )
     ),
-    // 페트로넷
-    fetch("https://www.petronet.co.kr/v4/main.jsp", { headers: { ...intlHeaders, Referer: "https://www.petronet.co.kr/" }, signal: AbortSignal.timeout(8000) })
-      .catch(() => null),
-    // KMBCO 환율
-    fetch("https://www.kmbco.com/kor/rate/exchange_rate.do", { headers: { ...intlHeaders, Referer: "https://www.kmbco.com/" }, signal: AbortSignal.timeout(8000) })
-      .catch(() => null),
+    // 페트로넷 → Edge Runtime 경유 (한국 노드에서 호출)
+    fetch(`${apiBase}/api/petronet`, { signal: AbortSignal.timeout(9000) }).catch(() => null),
+    // KMBCO 환율 → Edge Runtime 경유 (한국 노드에서 호출)
+    fetch(`${apiBase}/api/exchange`,  { signal: AbortSignal.timeout(9000) }).catch(() => null),
   ]);
 
   // ─── 1. 주유소 스냅샷 저장 ───
@@ -246,11 +152,8 @@ export default async function handler(req, res) {
   const todayDow = new Date(todayKST).getDay(); // 0=일, 6=토
   if (todayDow !== 0 && todayDow !== 6) {
     try {
-      const petroHtml = petroRes ? await petroRes.text() : "";
-      const exchHtml  = exchRes  ? await exchRes.text()  : "";
-
-      const petro = petroHtml ? parsePetronet(petroHtml) : null;
-      const exch  = exchHtml  ? parseExchange(exchHtml)  : null;
+      const petro = (petroRes?.ok) ? await petroRes.json().catch(() => null) : null;
+      const exch  = (exchRes?.ok)  ? await exchRes.json().catch(() => null)  : null;
 
       // 페트로넷은 익일 오전에 전날 싱가포르 가격 게시
       // → current = 가장 최근 영업일 가격 (오늘 날짜로 저장해 데일리로 사용)

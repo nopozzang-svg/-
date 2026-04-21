@@ -1042,7 +1042,7 @@ export default function SailDashboard() {
           ...existing,
           current: cur,
           prev: prv,
-          change: prv !== null ? +(cur - prv).toFixed(dp) : null,
+          change: prv !== null ? +(cur - prv).toFixed(dp) : (existing.change ?? null),
           history: existing.history || {},
         };
       });
@@ -1056,7 +1056,7 @@ export default function SailDashboard() {
           ...existingExch,
           current: exchCur,
           prev: exchPrv,
-          change: exchPrv !== null ? +(exchCur - exchPrv).toFixed(1) : null,
+          change: exchPrv !== null ? +(exchCur - exchPrv).toFixed(1) : (existingExch.change ?? null),
           history: existingExch.history || {},
         };
       }
