@@ -4,7 +4,7 @@ import {
   getCurrentMonthConstants,
   getCurrentMonthKey,
   getPrevMonthKey,
-  saveMonthConstants,
+  saveAndSyncConstants,
   getDefaultProducts,
   getAllConstants,
 } from "../lib/mopsConstants";
@@ -77,9 +77,9 @@ export default function ConstantsModal({ isOpen, onClose, onSaved }: Props) {
     }));
   };
 
-  // 저장
+  // 저장 (localStorage + Supabase 동기화)
   const handleSave = () => {
-    saveMonthConstants({ month, products });
+    saveAndSyncConstants({ month, products });
     setSaved(true);
     onSaved();
     setTimeout(() => setSaved(false), 2500);

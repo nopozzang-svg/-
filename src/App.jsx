@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import MopsSection from "./components/MopsSection";
 import SalesReport from "./components/SalesReport";
 import ConstantsModal from "./components/ConstantsModal";
+import { syncConstantsFromSupabase } from "./lib/mopsConstants";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, Legend, Cell, ReferenceLine
@@ -997,6 +998,7 @@ export default function SailDashboard() {
     // Supabase 동기화 완료 후:
     //   - 주유소 live 데이터 fetch (전일비 정확성 보장)
     //   - intl 재호출 → Supabase 히스토리가 채워진 상태에서 Supabase 보정 적용
+    syncConstantsFromSupabase(); // MOPS 상수 크로스 디바이스 동기화
     loadFromSupabase().finally(() => {
       fetchLiveData();
       fetchIntlData(); // INTL_HISTORY_KEY 채운 뒤 재보정
@@ -1076,7 +1078,7 @@ export default function SailDashboard() {
   };
 
   const fetchIntlData = async () => {
-    const INTL_KEY = "sail_intl_prices_v8";
+    const INTL_KEY = "sail_intl_prices_v9";
 
     // KST 기준 오늘 날짜 문자열 + 현재 시각(분 단위)
     const nowKST   = new Date(Date.now() + 9 * 60 * 60 * 1000);
