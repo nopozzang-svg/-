@@ -1038,11 +1038,16 @@ export default function SailDashboard() {
         if (cur === null) return;
         const prv = prev?.[supaKey] ?? null;
         const existing = patched.petro[petroKey] || { history: {} };
+        // Supabase cur와 live cur가 같으면 live API의 change가 정확 (크론 날짜 ≠ 실제 가격 날짜로 인한 0 계산 방지)
+        const sameAslive = cur === (existing.current ?? null);
+        const change = (!sameAslive && prv !== null)
+          ? +(cur - prv).toFixed(dp)
+          : (existing.change ?? null);
         patched.petro[petroKey] = {
           ...existing,
           current: cur,
           prev: prv,
-          change: prv !== null ? +(cur - prv).toFixed(dp) : (existing.change ?? null),
+          change,
           history: existing.history || {},
         };
       });
@@ -1052,11 +1057,14 @@ export default function SailDashboard() {
       if (exchCur !== null) {
         const exchPrv = prev?.exch ?? null;
         const existingExch = patched.exch || { history: {} };
+        const exchSameAsLive = exchCur === (existingExch.current ?? null);
         patched.exch = {
           ...existingExch,
           current: exchCur,
           prev: exchPrv,
-          change: exchPrv !== null ? +(exchCur - exchPrv).toFixed(1) : (existingExch.change ?? null),
+          change: (!exchSameAsLive && exchPrv !== null)
+            ? +(exchCur - exchPrv).toFixed(1)
+            : (existingExch.change ?? null),
           history: existingExch.history || {},
         };
       }
