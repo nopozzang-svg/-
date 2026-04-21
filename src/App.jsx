@@ -286,13 +286,13 @@ const applyPrevDiffs = (groups, prevData) => {
       ...g,
       sail: {
         ...g.sail,
-        prevGasoline: ps?.sg ?? null,
-        prevDiesel:   ps?.sd ?? null,
+        prevGasoline: ps?.sg  || null,
+        prevDiesel:   ps?.sd  || null,
       },
       competitors: g.competitors.map(c => ({
         ...c,
-        prevGasoline: ps?.comp?.[c.name]?.g ?? null,
-        prevDiesel:   ps?.comp?.[c.name]?.d ?? null,
+        prevGasoline: ps?.comp?.[c.name]?.g || null,
+        prevDiesel:   ps?.comp?.[c.name]?.d || null,
       })),
     };
   });
@@ -1076,7 +1076,7 @@ export default function SailDashboard() {
   };
 
   const fetchIntlData = async () => {
-    const INTL_KEY = "sail_intl_prices_v6";
+    const INTL_KEY = "sail_intl_prices_v7";
 
     // KST 기준 오늘 날짜 문자열 + 현재 시각(분 단위)
     const nowKST   = new Date(Date.now() + 9 * 60 * 60 * 1000);

@@ -137,8 +137,14 @@ export default async function handler(req, res) {
       snapshot[group.name] = { sg: sp.gasoline || 0, sd: sp.diesel || 0, comp };
     }
 
-    const saveRes = await supaUpsert("station_snapshots", { date: todayKST, snapshot });
-    if (!saveRes.ok) errors.push(`station_snapshots upsert: ${saveRes.status}`);
+    const hasAnyPrice = Object.entries(snapshot)
+      .filter(([k]) => k !== "_live")
+      .some(([, v]) => v.sg > 0 || v.sd > 0);
+    if (!hasAnyPrice) { errors.push("station_snapshots: all prices 0, skip"); }
+    else {
+      const saveRes = await supaUpsert("station_snapshots", { date: todayKST, snapshot });
+      if (!saveRes.ok) errors.push(`station_snapshots upsert: ${saveRes.status}`);
+    }
   } catch (e) {
     errors.push(`station fetch: ${e.message}`);
   }
