@@ -116,12 +116,20 @@ const SupaCurrent = {
       return rows.flatMap((r) => r.records || []);
     } catch { return []; }
   },
-  async upsert(jiyeok, records) {
+  // 새 records의 날짜 범위만 교체, 나머지 기존 데이터 보존
+  async upsert(jiyeok, newRecords) {
     try {
+      const all = await this.getAll();
+      const existing = all.filter((r) => r.jiyeok === jiyeok);
+      const newDates = newRecords.map((r) => r.date).filter(Boolean).sort();
+      const minDate = newDates[0];
+      const maxDate = newDates[newDates.length - 1];
+      const preserved = existing.filter((r) => r.date < minDate || r.date > maxDate);
+      const merged = [...preserved, ...newRecords];
       await fetch(`${SUPA_URL}/rest/v1/sales_current`, {
         method: "POST",
         headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
-        body: JSON.stringify({ jiyeok, records, updated_at: new Date().toISOString() }),
+        body: JSON.stringify({ jiyeok, records: merged, updated_at: new Date().toISOString() }),
       });
     } catch {}
   },
