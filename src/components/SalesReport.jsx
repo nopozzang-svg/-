@@ -184,12 +184,14 @@ export default function SalesReport() {
 
       setRecords(merged);
       if (merged.length) {
-        const now = new Date();
-        const y = now.getFullYear();
-        const mo = String(now.getMonth() + 1).padStart(2, "0");
-        const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
-        setDateFrom(`${y}-${mo}-01`);
-        setDateTo(`${y}-${mo}-${String(lastDay).padStart(2, "0")}`);
+        // 가장 최근 데이터가 있는 달로 필터 자동 설정 (현재 달 고정 → 데이터 없을 때 빈 화면 방지)
+        const allDates = merged.map((r) => r.date).filter(Boolean).sort();
+        const latestDate = allDates[allDates.length - 1];
+        const latestMonth = latestDate.substring(0, 7);
+        const [ly, lm] = latestMonth.split("-");
+        const lastDay = new Date(+ly, +lm, 0).getDate();
+        setDateFrom(`${latestMonth}-01`);
+        setDateTo(`${latestMonth}-${String(lastDay).padStart(2, "0")}`);
       }
     })();
   }, []);
