@@ -51,12 +51,9 @@ export async function syncConstantsFromSupabase(): Promise<void> {
     const rows: Array<{ month: string; products: MonthConstants["products"]; updated_at: string }> = await res.json();
     if (!rows.length) return;
     const all = getAllConstants();
+    // Supabase 항상 우선 — 모든 기기의 저장이 Supabase를 통하므로 최신 소스
     rows.forEach(row => {
-      const local = all[row.month];
-      // Supabase가 더 최신이거나 로컬에 없으면 덮어쓰기
-      if (!local || new Date(row.updated_at) > new Date(local.updatedAt)) {
-        all[row.month] = { month: row.month, products: row.products, updatedAt: row.updated_at };
-      }
+      all[row.month] = { month: row.month, products: row.products, updatedAt: row.updated_at };
     });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
   } catch { /* 오프라인 등 실패 시 localStorage만 사용 */ }

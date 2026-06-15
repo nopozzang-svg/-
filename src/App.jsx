@@ -998,10 +998,13 @@ export default function SailDashboard() {
     // Supabase 동기화 완료 후:
     //   - 주유소 live 데이터 fetch (전일비 정확성 보장)
     //   - intl 재호출 → Supabase 히스토리가 채워진 상태에서 Supabase 보정 적용
-    syncConstantsFromSupabase(); // MOPS 상수 크로스 디바이스 동기화
-    loadFromSupabase().finally(() => {
+    // 상수 동기화 + Supabase 히스토리 로드를 병렬로, 둘 다 완료 후 최종 렌더
+    Promise.allSettled([
+      syncConstantsFromSupabase(),
+      loadFromSupabase(),
+    ]).then(() => {
       fetchLiveData();
-      fetchIntlData(); // INTL_HISTORY_KEY 채운 뒤 재보정
+      fetchIntlData(); // 상수·INTL_HISTORY_KEY 모두 채운 뒤 재보정
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1078,7 +1081,7 @@ export default function SailDashboard() {
   };
 
   const fetchIntlData = async () => {
-    const INTL_KEY = "sail_intl_prices_v11";
+    const INTL_KEY = "sail_intl_prices_v12";
 
     // KST 기준 오늘 날짜 문자열 + 현재 시각(분 단위)
     const nowKST   = new Date(Date.now() + 9 * 60 * 60 * 1000);
