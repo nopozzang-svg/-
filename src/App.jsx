@@ -1081,7 +1081,7 @@ export default function SailDashboard() {
   };
 
   const fetchIntlData = async () => {
-    const INTL_KEY = "sail_intl_prices_v12";
+    const INTL_KEY = "sail_intl_prices_v13";
 
     // KST 기준 오늘 날짜 문자열 + 현재 시각(분 단위)
     const nowKST   = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -1475,6 +1475,7 @@ export default function SailDashboard() {
                     <th className="imt-th imt-name"></th>
                     <th className="imt-th">전월 평균<br/><span className="imt-sub">{prevLabel}</span></th>
                     <th className="imt-th imt-accent">당월 평균(예상)<br/><span className="imt-sub">{curLabel}</span></th>
+                    <th className="imt-th imt-actual">당월 평균<br/><span className="imt-sub">{curLabel}</span></th>
                     <th className="imt-th">금일<br/><span className="imt-sub">오늘</span></th>
                   </tr>
                 </thead>
@@ -1487,6 +1488,7 @@ export default function SailDashboard() {
                         <td className="imt-td imt-name">{label}<span className="imt-unit"> {unit}</span></td>
                         <td className="imt-td imt-val">{fmt(prevAvg, unit)}</td>
                         <td className="imt-td imt-val imt-projected">{fmt(stats?.projected, unit)}</td>
+                        <td className="imt-td imt-val imt-actual">{fmt(stats?.actual, unit)}</td>
                         <td className="imt-td imt-val imt-today">{fmt(today, unit)}</td>
                       </tr>
                     );

@@ -643,6 +643,12 @@
   color: #7c3aed;
 }
 
+.imt-th.imt-actual { color: #059669; }
+
+.imt-actual {
+  color: #059669;
+}
+
 .imt-today {
   color: #111827;
   font-weight: 700;
