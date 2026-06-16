@@ -1101,6 +1101,117 @@
   border-top: 1px solid #f3f4f6;
 }
 
+/* ── 카카오톡 메시지 생성 ── */
+.mops-msg-section {
+  border-top: 1px solid #e5e7eb;
+  padding: 14px 18px 16px;
+  background: #fafafa;
+}
+
+.mops-msg-header {
+  font-size: 11px;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+.mops-msg-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mops-msg-date {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #374151;
+  background: #fff;
+  cursor: pointer;
+  outline: none;
+}
+.mops-msg-date:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 2px rgba(124,58,237,0.12);
+}
+
+.mops-msg-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+  user-select: none;
+}
+.mops-msg-check input[type="checkbox"] {
+  accent-color: #7c3aed;
+  cursor: pointer;
+}
+
+.mops-msg-btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #7c3aed;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.mops-msg-btn:hover { background: #6d28d9; }
+.mops-msg-btn:active { background: #5b21b6; }
+
+.mops-msg-output {
+  margin-top: 12px;
+}
+
+.mops-msg-textarea {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #111827;
+  background: #fff;
+  resize: vertical;
+  box-sizing: border-box;
+  white-space: pre;
+  overflow-x: auto;
+}
+.mops-msg-textarea:focus { outline: none; }
+
+.mops-msg-copy-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.mops-msg-copy {
+  padding: 6px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.mops-msg-copy:hover { background: #f3f4f6; }
+.mops-msg-copy-done {
+  background: #ecfdf5;
+  color: #059669;
+  border-color: #6ee7b7;
+}
+
 /* ── 월 선택 탭 ── */
 .mops-month-tabs {
   display: flex;

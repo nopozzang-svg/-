@@ -3,6 +3,7 @@ import {
   extractActualMonthlyValues,
   getRemainingWeekdays,
   calculateProductSummary,
+  calculateMopsPrice,
 } from "../lib/mopsCalculations";
 import {
   getAllConstants,
@@ -13,7 +14,6 @@ import type { MopsAllProducts, MopsResult } from "../types/mops";
 
 const INTL_HISTORY_KEY = "sail_intl_history";
 
-// intlData 타입 (App.jsx의 intlData 구조 반영)
 interface IntlData {
   petro?: {
     mopsGasoline?: { current?: number };
@@ -28,13 +28,11 @@ interface Props {
   onOpenSettings: () => void;
 }
 
-/** 숫자 표시 헬퍼 — #,###원 */
 function fmt(v: number | null | undefined): string {
   if (v == null) return "—";
   return Math.round(v).toLocaleString("ko-KR") + "원";
 }
 
-/** 당월比 셀 렌더링 */
 function renderDiff(result: MopsResult) {
   const diff =
     result.daily != null && result.projectedMonthlyAverage != null
@@ -55,7 +53,6 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
   const currentMonthKey = getCurrentMonthKey();
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
 
-  // 상수가 저장된 월 목록 (최신순)
   const availableMonths = useMemo(() => {
     const allConsts = getAllConstants();
     return Object.keys(allConsts).sort().reverse();
@@ -63,28 +60,25 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
 
   const isCurrentMonth = selectedMonth === currentMonthKey;
 
-  // KST 기준 오늘 날짜 정보 (현재 월 계산용)
-  const { year: todayYear, month: todayMonth, today } = useMemo(() => {
+  const { year: todayYear, month: todayMonth, today, todayStr } = useMemo(() => {
     const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
     return {
-      year:  kst.getUTCFullYear(),
-      month: kst.getUTCMonth(),
-      today: kst.getUTCDate(),
+      year:     kst.getUTCFullYear(),
+      month:    kst.getUTCMonth(),
+      today:    kst.getUTCDate(),
+      todayStr: kst.toISOString().substring(0, 10),
     };
   }, []);
 
   const remainingWeekdays = getRemainingWeekdays(todayYear, todayMonth, today);
 
-  // 선택된 월의 연도/월(0-indexed) 파싱
   const [selYear, selMonthIdx] = useMemo(() => {
     const parts = selectedMonth.split("-").map(Number);
     return [parts[0], parts[1] - 1];
   }, [selectedMonth]);
 
-  // 선택된 월의 상수
   const constants = getCurrentMonthConstants(selectedMonth);
 
-  // 계산 결과
   const results = useMemo((): MopsAllProducts | null => {
     if (!constants) return null;
 
@@ -93,13 +87,8 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       history = JSON.parse(localStorage.getItem(INTL_HISTORY_KEY) || "{}");
     } catch { /* ignore */ }
 
-    // 과거 월: remainingWeekdays=0, daily=null → 월 평균만 의미 있음
     const selRemaining = isCurrentMonth ? remainingWeekdays : 0;
-
-    // 페트로넷은 익일 오전에 전날 싱가포르 가격 게시
-    // → 4/3에는 4/2 싱가포르 가격이 current로 반환 → 이것이 오늘(4/3) 데일리
     const dailyExch = isCurrentMonth ? (intlData?.exch?.current ?? null) : null;
-
     const exchValues = extractActualMonthlyValues(history, "exch", selYear, selMonthIdx);
 
     const compute = (
@@ -138,6 +127,146 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
   const dsl  = results?.diesel   ?? EMPTY;
   const kero = results?.kerosene ?? EMPTY;
 
+  // ── 메시지 생성 상태 ──
+  const [msgDate, setMsgDate] = useState(todayStr);
+  const [unconfirmedPrev, setUnconfirmedPrev] = useState(false);
+  const [msgText, setMsgText] = useState("");
+  const [copyDone, setCopyDone] = useState(false);
+
+  const buildMessage = () => {
+    let history: Record<string, Record<string, number>> = {};
+    try { history = JSON.parse(localStorage.getItem(INTL_HISTORY_KEY) || "{}"); } catch {}
+
+    const parts = msgDate.split("-").map(Number);
+    const yr = parts[0], mo = parts[1], dy = parts[2];
+    const moIdx = mo - 1;
+    const targetMonthKey = msgDate.substring(0, 7);
+
+    const allConsts = getAllConstants();
+    const targetConst = allConsts[targetMonthKey];
+    if (!targetConst) {
+      setMsgText(`⚠ ${targetMonthKey} 상수가 없습니다. 상수 설정에서 입력해 주세요.`);
+      return;
+    }
+    const c = targetConst.products;
+
+    const isToday = msgDate === todayStr;
+
+    // 일별(D) 값 — 오늘이면 live intlData, 과거면 history
+    const dailyMopsGas  = isToday ? (intlData?.petro?.mopsGasoline?.current ?? null) : (history[msgDate]?.mopsGas    ?? null);
+    const dailyMopsKero = isToday ? (intlData?.petro?.mopsKerosene?.current  ?? null) : (history[msgDate]?.mopsKero   ?? null);
+    const dailyMopsDsl  = isToday ? (intlData?.petro?.mopsDiesel?.current    ?? null) : (history[msgDate]?.mopsDiesel ?? null);
+    const dailyExch     = isToday ? (intlData?.exch?.current                 ?? null) : (history[msgDate]?.exch       ?? null);
+
+    // 선택 날짜 이전 당월 평일 항목 (weekday, 당월, msgDate 미만)
+    const beforeEntries = Object.entries(history)
+      .filter(([date]) => {
+        if (date >= msgDate) return false;
+        const d = new Date(date + "T12:00:00Z");
+        const dow = d.getDay();
+        return d.getFullYear() === yr && d.getMonth() === moIdx && dow !== 0 && dow !== 6;
+      })
+      .sort(([a], [b]) => a.localeCompare(b));
+
+    const avgOf = (field: string): number | null => {
+      const vals = beforeEntries
+        .map(([, v]) => v[field])
+        .filter((v): v is number => v != null && !isNaN(v));
+      if (!vals.length) return null;
+      return vals.reduce((s, v) => s + v, 0) / vals.length;
+    };
+
+    const avgMopsGas  = avgOf("mopsGas");
+    const avgMopsKero = avgOf("mopsKero");
+    const avgMopsDsl  = avgOf("mopsDiesel");
+    const avgExch     = avgOf("exch");
+
+    // 선택일 이후 남은 평일 수
+    const lastDay = new Date(yr, moIdx + 1, 0).getDate();
+    let remaining = 0;
+    for (let d = dy + 1; d <= lastDay; d++) {
+      const dow = new Date(yr, moIdx, d).getDay();
+      if (dow !== 0 && dow !== 6) remaining++;
+    }
+
+    // 말일 추정: 이전 실적 합 + 오늘값 × 남은평일 / (이전count + 남은평일)
+    const projOf = (vals: number[], todayVal: number | null): number | null => {
+      if (todayVal == null) return null;
+      const count = vals.length + remaining;
+      if (count === 0) return todayVal;
+      return (vals.reduce((s, v) => s + v, 0) + todayVal * remaining) / count;
+    };
+
+    const beforeGasVals  = beforeEntries.map(([, v]) => v["mopsGas"]).filter((v): v is number => v != null && !isNaN(v));
+    const beforeKeroVals = beforeEntries.map(([, v]) => v["mopsKero"]).filter((v): v is number => v != null && !isNaN(v));
+    const beforeDslVals  = beforeEntries.map(([, v]) => v["mopsDiesel"]).filter((v): v is number => v != null && !isNaN(v));
+    const beforeExchVals = beforeEntries.map(([, v]) => v["exch"]).filter((v): v is number => v != null && !isNaN(v));
+
+    const projMopsGas  = projOf(beforeGasVals,  dailyMopsGas);
+    const projMopsKero = projOf(beforeKeroVals, dailyMopsKero);
+    const projMopsDsl  = projOf(beforeDslVals,  dailyMopsDsl);
+    const projExch     = projOf(beforeExchVals, dailyExch);
+
+    const calcWon = (mops: number | null, exch: number | null, prod: typeof c.gasoline): number | null => {
+      if (mops == null || exch == null) return null;
+      return calculateMopsPrice({
+        productPrice: mops, exchangeRate: exch,
+        importCharge: prod.importCharge, tariff: prod.tariff,
+        tax: prod.tax, premium: prod.premium,
+      });
+    };
+
+    // A 섹션 (당월 평균 원화)
+    const aGas  = calcWon(avgMopsGas,  avgExch, c.gasoline);
+    const aKero = calcWon(avgMopsKero, avgExch, c.kerosene);
+    const aDsl  = calcWon(avgMopsDsl,  avgExch, c.diesel);
+
+    // D 섹션 (데일리 원화)
+    const dGas  = calcWon(dailyMopsGas,  dailyExch, c.gasoline);
+    const dKero = calcWon(dailyMopsKero, dailyExch, c.kerosene);
+    const dDsl  = calcWon(dailyMopsDsl,  dailyExch, c.diesel);
+
+    // 말일 추정 원화
+    const pGas  = calcWon(projMopsGas,  projExch, c.gasoline);
+    const pKero = calcWon(projMopsKero, projExch, c.kerosene);
+    const pDsl  = calcWon(projMopsDsl,  projExch, c.diesel);
+
+    const fmtWon = (v: number | null) => v == null ? "—" : Math.round(v).toLocaleString("ko-KR");
+    const fmtDlr = (v: number | null) => v == null ? "—" : `$${v.toFixed(1)}`;
+    const fmtExch = (v: number | null) => {
+      if (v == null) return "—";
+      return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    const prevMo = mo === 1 ? 12 : mo - 1;
+
+    const lines: string[] = [];
+    if (unconfirmedPrev) lines.push(`※ ${prevMo}월 프리미엄 미확정`);
+    lines.push(`    G ${c.gasoline.premium}  K ${c.kerosene.premium}  D ${c.diesel.premium}`);
+    lines.push(`${mo}월 ${dy}일`);
+    lines.push(`A(${fmtExch(avgExch)})`);
+    lines.push(`${fmtWon(aGas)} / ${fmtWon(aKero)} / ${fmtWon(aDsl)}`);
+    lines.push(`(${fmtDlr(avgMopsGas)})  (${fmtDlr(avgMopsKero)})  (${fmtDlr(avgMopsDsl)})`);
+    lines.push("");
+    lines.push(`D(${fmtExch(dailyExch)})`);
+    lines.push(`${fmtWon(dGas)} / ${fmtWon(dKero)} / ${fmtWon(dDsl)}`);
+    lines.push(`(${fmtDlr(dailyMopsGas)})  (${fmtDlr(dailyMopsKero)})  (${fmtDlr(dailyMopsDsl)})`);
+    lines.push("");
+    lines.push("* 말일 추정");
+    lines.push(`${fmtWon(pGas)} / ${fmtWon(pKero)} / ${fmtWon(pDsl)}`);
+
+    setMsgText(lines.join("\n"));
+  };
+
+  const handleCopy = async () => {
+    if (!msgText) return;
+    try {
+      await navigator.clipboard.writeText(msgText);
+      setCopyDone(true);
+      setTimeout(() => setCopyDone(false), 2000);
+    } catch {}
+  };
+
   return (
     <div className="mops-section">
 
@@ -167,7 +296,6 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       {/* ── 월 선택 탭 ── */}
       {availableMonths.length > 0 && (
         <div className="mops-month-tabs">
-          {/* 현재 월이 목록에 없을 경우 별도 탭 */}
           {!availableMonths.includes(currentMonthKey) && (
             <button
               className={`mops-month-tab ${selectedMonth === currentMonthKey ? "mops-month-tab-active" : ""}`}
@@ -188,7 +316,7 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
         </div>
       )}
 
-      {/* ── 월초 배너 (1~5일, 상수 없을 때) ── */}
+      {/* ── 월초 배너 ── */}
       {showWarning && (
         <div className="mops-warning-banner">
           <span>
@@ -231,7 +359,6 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
               </tr>
             </thead>
             <tbody>
-              {/* 데일리 — 당월에서만 표시 */}
               {isCurrentMonth && (
                 <tr className="mops-tr">
                   <td className="mops-td mops-td-fuel">
@@ -242,7 +369,6 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
                   <td className="mops-td" style={{ fontWeight: 600 }}>{fmt(kero.daily)}</td>
                 </tr>
               )}
-              {/* 월 평균 */}
               <tr className="mops-tr">
                 <td className="mops-td mops-td-fuel">
                   {isCurrentMonth ? "당월 평균" : "월 평균"}<br />
@@ -252,7 +378,6 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
                 <td className="mops-td">{fmt(dsl.monthlyAverage)}</td>
                 <td className="mops-td">{fmt(kero.monthlyAverage)}</td>
               </tr>
-              {/* 당월 예측 평균 — 당월에서만 표시 */}
               {isCurrentMonth && (
                 <tr className="mops-tr">
                   <td className="mops-td mops-td-fuel mops-td-projected">
@@ -263,7 +388,6 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
                   <td className="mops-td mops-td-projected">{fmt(kero.projectedMonthlyAverage)}</td>
                 </tr>
               )}
-              {/* 당월比 — 당월에서만 표시 */}
               {isCurrentMonth && (
                 <tr className="mops-tr">
                   <td className="mops-td mops-td-fuel mops-td-rowdiff">
@@ -277,12 +401,55 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
             </tbody>
           </table>
 
-          {/* 계산식 참고 */}
           <div className="mops-formula-note">
             {"[(제품가 + 프리미엄 + 관세) ÷ 158.984] × 환율 + 수입부과금 + 세금"} × 1.1
           </div>
         </div>
       )}
+
+      {/* ── 카카오톡 메시지 생성 ── */}
+      <div className="mops-msg-section">
+        <div className="mops-msg-header">카카오톡 메시지 생성</div>
+        <div className="mops-msg-controls">
+          <input
+            type="date"
+            className="mops-msg-date"
+            value={msgDate}
+            max={todayStr}
+            onChange={e => { setMsgDate(e.target.value); setMsgText(""); }}
+          />
+          <label className="mops-msg-check">
+            <input
+              type="checkbox"
+              checked={unconfirmedPrev}
+              onChange={e => setUnconfirmedPrev(e.target.checked)}
+            />
+            전월 프리미엄 미확정
+          </label>
+          <button className="mops-msg-btn" onClick={buildMessage}>
+            메시지 생성
+          </button>
+        </div>
+        {msgText && (
+          <div className="mops-msg-output">
+            <textarea
+              className="mops-msg-textarea"
+              value={msgText}
+              readOnly
+              rows={13}
+            />
+            <div className="mops-msg-copy-row">
+              <button
+                className={`mops-msg-copy${copyDone ? " mops-msg-copy-done" : ""}`}
+                onClick={handleCopy}
+              >
+                {copyDone ? "✓ 복사됨" : "복사"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
