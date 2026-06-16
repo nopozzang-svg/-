@@ -238,10 +238,8 @@ export default function MopsSection({ intlData, onOpenSettings }: Props) {
       return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
-    const prevMo = mo === 1 ? 12 : mo - 1;
-
     const lines: string[] = [];
-    if (unconfirmedPrev) lines.push(`※ ${prevMo}월 프리미엄 미확정`);
+    if (unconfirmedPrev) lines.push(`※ ${mo}월 프리미엄 미확정`);
     lines.push(`    G ${c.gasoline.premium}  K ${c.kerosene.premium}  D ${c.diesel.premium}`);
     lines.push(`${mo}월 ${dy}일`);
     lines.push(`A(${fmtExch(avgExch)})`);
