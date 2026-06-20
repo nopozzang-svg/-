@@ -219,6 +219,52 @@ const getKSTDateTimeStr = () => {
   return kst.toISOString().replace("T", " ").substring(0, 16);
 };
 
+const addDaysYmd = (dateStr, days) => {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().split("T")[0];
+};
+
+const getExpectedIntlMarketDate = () => {
+  let d = getKSTDateStr();
+  // 토·일에는 직전 금요일 데이터를 최신 기대일로 봄
+  while ([0, 6].includes(new Date(`${d}T12:00:00Z`).getUTCDay())) {
+    d = addDaysYmd(d, -1);
+  }
+  return d;
+};
+
+const formatShortDate = (dateStr) => {
+  if (!dateStr) return null;
+  return `${parseInt(dateStr.slice(5, 7), 10)}/${parseInt(dateStr.slice(8, 10), 10)}`;
+};
+
+const KNOWN_MARKET_HOLIDAYS = {
+  US: {
+    "2026-06-19": "미국 Juneteenth 휴장",
+  },
+  SG: {},
+  UK: {},
+  AE: {},
+};
+
+const getIntlStaleNote = ({ data, market }) => {
+  const hist = data?.history;
+  const lastDate = hist ? Object.keys(hist).sort().pop() : null;
+  const expectedDate = getExpectedIntlMarketDate();
+  if (!lastDate || lastDate >= expectedDate) return null;
+
+  let cursor = addDaysYmd(lastDate, 1);
+  while (cursor <= expectedDate) {
+    const reason = KNOWN_MARKET_HOLIDAYS[market]?.[cursor];
+    if (reason) {
+      return `${reason}으로 ${formatShortDate(lastDate)} 가격 표시`;
+    }
+    cursor = addDaysYmd(cursor, 1);
+  }
+  return `원천 미고시로 ${formatShortDate(lastDate)} 가격 표시`;
+};
+
 /** 실제 API 데이터를 localStorage에 저장 — _live:true 마커로 가짜 데이터와 구분 */
 const savePricesToLocal = (date, groups) => {
   try {
@@ -1367,20 +1413,20 @@ export default function SailDashboard() {
         <div className="intl-section" style={fuelType === "sales" ? { display: "none" } : {}}>
           <div className="intl-crude-row">
             {[
-              { label: "WTI",       data: intlData?.petro?.wti,   unit: "$/bbl" },
-              { label: "두바이유",   data: intlData?.petro?.dubai, unit: "$/bbl" },
-              { label: "원/달러",    data: intlData?.exch,         unit: "원" },
-            ].map(({ label, data, unit }) => {
+              { label: "WTI",       data: intlData?.petro?.wti,   unit: "$/bbl", market: "US" },
+              { label: "두바이유",   data: intlData?.petro?.dubai, unit: "$/bbl", market: "AE" },
+              { label: "원/달러",    data: intlData?.exch,         unit: "원",    market: "KR" },
+            ].map(({ label, data, unit, market }) => {
               const cur  = data?.current ?? null;
               const chg  = data?.change  ?? null;
               const up   = chg !== null && chg > 0;
               const dn   = chg !== null && chg < 0;
               const disp = cur === null ? "—" : cur.toFixed(1);
               const hist = data?.history;
-              const lastDate = hist ? Object.keys(hist).sort().pop() : null;
-              const dateLabel = lastDate
-                ? `(${parseInt(lastDate.slice(5, 7), 10)}/${parseInt(lastDate.slice(8, 10), 10)})`
-                : null;
+              const lastDate = hist ? Object.keys(hist).sort().pop() : data?.dateYmd ?? null;
+              const dateLabel = lastDate ? `(${formatShortDate(lastDate)})` : null;
+              const staleNote = market !== "KR" ? getIntlStaleNote({ data, market }) : null;
+              const fallbackNote = data?.fallbackUsed ? data.fallbackReason : null;
               return (
                 <div key={label} className="intl-crude-card">
                   <span className="intl-card-label">
@@ -1393,6 +1439,9 @@ export default function SailDashboard() {
                     <span className="intl-card-change" style={{ color: up ? "#ef4444" : dn ? "#2563eb" : "#6b7280" }}>
                       {up ? "▲" : dn ? "▼" : "—"}{Math.abs(chg).toFixed(1)}
                     </span>
+                  )}
+                  {(staleNote || fallbackNote) && (
+                    <span className="intl-card-note">※ {fallbackNote || staleNote}</span>
                   )}
                 </div>
               );
@@ -1407,9 +1456,11 @@ export default function SailDashboard() {
                 if (!hist) return null;
                 const lastDate = Object.keys(hist).sort().pop();
                 if (!lastDate) return null;
-                const m = parseInt(lastDate.slice(5, 7), 10);
-                const d = parseInt(lastDate.slice(8, 10), 10);
-                return <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>({m}/{d})</span>;
+                return <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>({formatShortDate(lastDate)})</span>;
+              })()}
+              {(() => {
+                const staleNote = getIntlStaleNote({ data: intlData?.petro?.mopsGasoline, market: "SG" });
+                return staleNote ? <span className="intl-card-note" style={{ marginLeft: "auto" }}>※ {staleNote}</span> : null;
               })()}
             </div>
             <table className="intl-mops-table">
