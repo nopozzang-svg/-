@@ -1127,7 +1127,8 @@ export default function SailDashboard() {
   };
 
   const fetchIntlData = async () => {
-    const INTL_KEY = "sail_intl_prices_v15";
+    // v16: KMB에 없는 환율 날짜를 SMBS로 보완. 구버전 v15 캐시가 6/18 환율을 계속 표시하지 않도록 분리.
+    const INTL_KEY = "sail_intl_prices_v16";
 
     // KST 기준 오늘 날짜 문자열 + 현재 시각(분 단위)
     const nowKST   = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -1136,15 +1137,21 @@ export default function SailDashboard() {
     const after8am = hhmm >= 8 * 60; // KST 08:00 이후 여부
 
     // 캐시 확인: 오늘 08:00 이후에 저장된 데이터이고 history가 포함된 경우만 재사용
-    // (history 없는 구버전 캐시, 2시간 이상 된 캐시는 무시하고 재fetch)
+    // (history 없는 구버전 캐시, 2시간 이상 된 캐시, 기대 영업일보다 오래된 환율 캐시는 무시하고 재fetch)
     const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+    const expectedExchDate = getExpectedIntlMarketDate();
     try {
       const cached = JSON.parse(localStorage.getItem(INTL_KEY) || "null");
+      const cachedExchHist = cached?.data?.exch?.history;
+      const cachedExchLastDate = cachedExchHist
+        ? Object.keys(cachedExchHist).sort().pop()
+        : cached?.data?.exch?.dateYmd ?? null;
       if (
         cached &&
         cached.date === todayStr &&
         cached.fetchedAfter8 &&
         cached.data?.petro?.wti?.history &&
+        cachedExchLastDate >= expectedExchDate &&
         cached.fetchedAt > twoHoursAgo
       ) {
         const data = supplementIntlFromSupabase(cached.data);
