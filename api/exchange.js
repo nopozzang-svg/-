@@ -34,6 +34,16 @@ const getQueryRange = () => {
   return { start: formatYMD(start), end: formatYMD(end) };
 };
 
+// 환율은 실시간/당일 잠정값이 아니라 "전일 확정 고시" 기준으로 사용한다.
+// 토·일에는 직전 금요일을 확정 기준일로 본다.
+const getConfirmedTargetDate = () => {
+  let d = addDays(getKSTDate(), -1);
+  while ([0, 6].includes(d.getUTCDay())) {
+    d = addDays(d, -1);
+  }
+  return formatYMD(d);
+};
+
 const parseKmb = (html) => {
   // categories: ['26/02/20', ...] 추출
   const catMatch  = html.match(/categories\s*:\s*\[([^\]]+)\]/);
@@ -96,25 +106,28 @@ const fetchSmbsHistory = async (start, end) => {
 };
 
 const buildResponse = (kmbHistory, smbsHistory, warnings = []) => {
+  const targetDate = getConfirmedTargetDate();
   const history = { ...kmbHistory };
   const historySources = {};
 
   Object.keys(kmbHistory).forEach(date => { historySources[date] = "KMB"; });
   Object.entries(smbsHistory).forEach(([date, rate]) => {
+    // 기본은 KMB, KMB에 없는 날짜만 SMBS로 보완한다.
     if (history[date] == null) {
       history[date] = rate;
       historySources[date] = "SMBS";
     }
   });
 
-  const dates = Object.keys(history).sort();
-  if (dates.length < 2) throw new Error("Insufficient rate data");
+  // 당일/실시간성 값은 표시하지 않고 전일 확정 기준일 이하 데이터만 사용한다.
+  const dates = Object.keys(history).filter(date => date <= targetDate).sort();
+  if (dates.length < 2) throw new Error(`Insufficient confirmed rate data through ${targetDate}`);
 
   const currentDate = dates[dates.length - 1];
   const prevDate = dates[dates.length - 2];
   const current = history[currentDate];
   const prev = history[prevDate];
-  const kmbLastDate = Object.keys(kmbHistory).sort().pop() ?? null;
+  const kmbLastDate = Object.keys(kmbHistory).filter(date => date <= targetDate).sort().pop() ?? null;
   const source = historySources[currentDate] ?? "KMB";
 
   return {
@@ -123,6 +136,8 @@ const buildResponse = (kmbHistory, smbsHistory, warnings = []) => {
     change: +(current - prev).toFixed(1),
     date: ymdToShort(currentDate),
     dateYmd: currentDate,
+    targetDate: ymdToShort(targetDate),
+    targetDateYmd: targetDate,
     prevDate: ymdToShort(prevDate),
     prevDateYmd: prevDate,
     source,
@@ -130,9 +145,9 @@ const buildResponse = (kmbHistory, smbsHistory, warnings = []) => {
     fallbackUsed: source !== "KMB",
     fallbackReason: source !== "KMB" ? `KMB ${ymdToShort(currentDate)} 미고시로 SMBS 보완` : null,
     kmbLastDate,
-    smbsLastDate: Object.keys(smbsHistory).sort().pop() ?? null,
-    history,
-    historySources,
+    smbsLastDate: Object.keys(smbsHistory).filter(date => date <= targetDate).sort().pop() ?? null,
+    history: Object.fromEntries(dates.map(date => [date, history[date]])),
+    historySources: Object.fromEntries(dates.map(date => [date, historySources[date]])),
     warnings,
   };
 };

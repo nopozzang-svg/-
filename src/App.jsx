@@ -234,6 +234,15 @@ const getExpectedIntlMarketDate = () => {
   return d;
 };
 
+const getExpectedExchangeDate = () => {
+  let d = getKSTYesterdayStr();
+  // 원/달러는 당일 실시간/잠정값이 아니라 전일 확정 고시값을 사용
+  while ([0, 6].includes(new Date(`${d}T12:00:00Z`).getUTCDay())) {
+    d = addDaysYmd(d, -1);
+  }
+  return d;
+};
+
 const formatShortDate = (dateStr) => {
   if (!dateStr) return null;
   return `${parseInt(dateStr.slice(5, 7), 10)}/${parseInt(dateStr.slice(8, 10), 10)}`;
@@ -1103,10 +1112,19 @@ export default function SailDashboard() {
         };
       });
 
-      // 환율 보정
-      const exchCur = latest?.exch ?? null;
+      // 환율 보정 — 원/달러는 전일 확정일 이하의 Supabase 값만 사용한다.
+      // 기존 크론이 오늘 날짜 행에 환율을 저장해 둔 경우가 있어, 당일/미래 키가 live 값을 덮지 못하게 방어.
+      const expectedExchDate = getExpectedExchangeDate();
+      const exchDates = storedDates
+        .filter(date => date <= expectedExchDate && stored[date]?.exch != null)
+        .sort();
+      const supaExchLastDate = exchDates[exchDates.length - 1] ?? null;
+      const liveExchDate = patched.exch?.dateYmd ?? (patched.exch?.history ? Object.keys(patched.exch.history).sort().pop() : null);
+      const shouldPatchExch = supaExchLastDate && (!liveExchDate || supaExchLastDate > liveExchDate);
+      const exchCur = shouldPatchExch ? (stored[supaExchLastDate]?.exch ?? null) : null;
       if (exchCur !== null) {
-        const exchPrv = prev?.exch ?? null;
+        const exchPrevDate = exchDates[exchDates.length - 2] ?? null;
+        const exchPrv = exchPrevDate ? stored[exchPrevDate]?.exch ?? null : null;
         const existingExch = patched.exch || { history: {} };
         const exchSameAsLive = exchCur === (existingExch.current ?? null);
         patched.exch = {
@@ -1116,6 +1134,9 @@ export default function SailDashboard() {
           change: (!exchSameAsLive && exchPrv !== null)
             ? +(exchCur - exchPrv).toFixed(1)
             : (existingExch.change ?? null),
+          dateYmd: supaExchLastDate,
+          date: formatShortDate(supaExchLastDate),
+          prevDateYmd: exchPrevDate,
           history: existingExch.history || {},
         };
       }
@@ -1127,8 +1148,9 @@ export default function SailDashboard() {
   };
 
   const fetchIntlData = async () => {
-    // v16: KMB에 없는 환율 날짜를 SMBS로 보완. 구버전 v15 캐시가 6/18 환율을 계속 표시하지 않도록 분리.
-    const INTL_KEY = "sail_intl_prices_v16";
+    // v17: 원/달러는 당일 실시간/잠정값이 아니라 전일 확정 고시값만 사용.
+    //      KMB를 기본으로 쓰고, 해당 날짜가 KMB에 없을 때만 SMBS로 보완.
+    const INTL_KEY = "sail_intl_prices_v17";
 
     // KST 기준 오늘 날짜 문자열 + 현재 시각(분 단위)
     const nowKST   = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -1139,7 +1161,7 @@ export default function SailDashboard() {
     // 캐시 확인: 오늘 08:00 이후에 저장된 데이터이고 history가 포함된 경우만 재사용
     // (history 없는 구버전 캐시, 2시간 이상 된 캐시, 기대 영업일보다 오래된 환율 캐시는 무시하고 재fetch)
     const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
-    const expectedExchDate = getExpectedIntlMarketDate();
+    const expectedExchDate = getExpectedExchangeDate();
     try {
       const cached = JSON.parse(localStorage.getItem(INTL_KEY) || "null");
       const cachedExchHist = cached?.data?.exch?.history;
