@@ -115,6 +115,7 @@ export default async function handler(req, res) {
       const json = stationFetched[idx];
       if (!json?.RESULT?.OIL) return;
       const oil = Array.isArray(json.RESULT.OIL) ? json.RESULT.OIL[0] : json.RESULT.OIL;
+      if (!oil) return;
       const prices = {};
       const oilPrices = oil.OIL_PRICE
         ? (Array.isArray(oil.OIL_PRICE) ? oil.OIL_PRICE : [oil.OIL_PRICE])
