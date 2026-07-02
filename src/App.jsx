@@ -1116,7 +1116,7 @@ export default function SailDashboard() {
   const fetchIntlData = async () => {
     // v17: 원/달러는 당일 실시간/잠정값이 아니라 전일 확정 고시값만 사용.
     //      KMB를 기본으로 쓰고, 해당 날짜가 KMB에 없을 때만 SMBS로 보완.
-    const INTL_KEY = "sail_intl_prices_v19";
+    const INTL_KEY = "sail_intl_prices_v20";
 
     // KST 기준 오늘 날짜 문자열 + 현재 시각(분 단위)
     const nowKST   = new Date(Date.now() + 9 * 60 * 60 * 1000);

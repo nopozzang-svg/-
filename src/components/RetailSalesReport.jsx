@@ -13,28 +13,13 @@ const supaHeaders = {
   "Content-Type": "application/json",
 };
 
-// Supabase SQL Editor에서 실행:
-// CREATE TABLE daily_station_report (
-//   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-//   station text NOT NULL,
-//   report_date date NOT NULL,
-//   gas_qty numeric DEFAULT 0,
-//   gas_amt numeric DEFAULT 0,
-//   diesel_qty numeric DEFAULT 0,
-//   diesel_amt numeric DEFAULT 0,
-//   kero_qty numeric DEFAULT 0,
-//   kero_amt numeric DEFAULT 0,
-//   gas_inv numeric DEFAULT 0,
-//   diesel_inv numeric DEFAULT 0,
-//   kero_inv numeric DEFAULT 0,
-//   carwash_small integer DEFAULT 0,
-//   carwash_large integer DEFAULT 0,
-//   carwash_amt numeric DEFAULT 0,
-//   created_at timestamptz DEFAULT now(),
-//   UNIQUE(station, report_date)
-// );
-// ALTER TABLE daily_station_report ENABLE ROW LEVEL SECURITY;
-// CREATE POLICY "Public access" ON daily_station_report FOR ALL USING (true);
+// 테이블 스키마 (daily_station_report):
+// id, date, station_name, station_group,
+// gasoline_qty, gasoline_amount, diesel_qty, diesel_amount,
+// kerosene_qty, total_qty, total_amount,
+// car_wash_small, car_wash_large, car_wash_total, car_wash_amount,
+// gasoline_inv, diesel_inv, kerosene_inv,
+// created_at, updated_at
 
 const STATIONS = [
   { name: "통일로일품주유소", group: "세영TMS"  },
@@ -52,27 +37,6 @@ const GROUP_COLORS = {
   "세영TMS":   "#d97706",
 };
 
-const CREATE_TABLE_SQL = `CREATE TABLE daily_station_report (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  station text NOT NULL,
-  report_date date NOT NULL,
-  gas_qty numeric DEFAULT 0,
-  gas_amt numeric DEFAULT 0,
-  diesel_qty numeric DEFAULT 0,
-  diesel_amt numeric DEFAULT 0,
-  kero_qty numeric DEFAULT 0,
-  kero_amt numeric DEFAULT 0,
-  gas_inv numeric DEFAULT 0,
-  diesel_inv numeric DEFAULT 0,
-  kero_inv numeric DEFAULT 0,
-  carwash_small integer DEFAULT 0,
-  carwash_large integer DEFAULT 0,
-  carwash_amt numeric DEFAULT 0,
-  created_at timestamptz DEFAULT now(),
-  UNIQUE(station, report_date)
-);
-ALTER TABLE daily_station_report ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public access" ON daily_station_report FOR ALL USING (true);`;
 
 // ── 파싱 ────────────────────────────────────────────────────────
 function parseNum(val) {
@@ -130,23 +94,50 @@ function parseMagamReport(workbook) {
 async function supaGetAll() {
   try {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/daily_station_report?select=*&order=report_date.asc`,
+      `${SUPABASE_URL}/rest/v1/daily_station_report?select=*&order=date.asc`,
       { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
     );
     if (res.ok) return { error: null, data: await res.json() };
     const body = await res.json().catch(() => ({}));
     const isTableMissing = (body.code === "42P01") ||
-      String(body.message || "").includes("does not exist") ||
-      String(body.hint || "").includes("does not exist");
+      String(body.message || "").includes("does not exist");
     return { error: isTableMissing ? "table_missing" : "fetch_error", data: [] };
   } catch { return { error: "network_error", data: [] }; }
 }
 
-async function supaUpsert(record) {
+async function supaUpsert(stationName, stationGroup, parsed) {
+  // 같은 주유소+날짜 기존 행 삭제 후 재삽입 (upsert 대용)
+  await fetch(
+    `${SUPABASE_URL}/rest/v1/daily_station_report?station_name=eq.${encodeURIComponent(stationName)}&date=eq.${parsed.dateStr}`,
+    { method: "DELETE", headers: supaHeaders }
+  );
+
+  const total_qty    = parsed.gas_qty    + parsed.diesel_qty    + parsed.kero_qty;
+  const total_amount = parsed.gas_amt    + parsed.diesel_amt    + parsed.kero_amt;
+
   const res = await fetch(`${SUPABASE_URL}/rest/v1/daily_station_report`, {
     method: "POST",
-    headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
-    body: JSON.stringify(record),
+    headers: supaHeaders,
+    body: JSON.stringify({
+      date:            parsed.dateStr,
+      station_name:    stationName,
+      station_group:   stationGroup,
+      gasoline_qty:    parsed.gas_qty,
+      gasoline_amount: parsed.gas_amt,
+      diesel_qty:      parsed.diesel_qty,
+      diesel_amount:   parsed.diesel_amt,
+      kerosene_qty:    parsed.kero_qty,
+      total_qty,
+      total_amount,
+      car_wash_small:  parsed.carwash_small,
+      car_wash_large:  parsed.carwash_large,
+      car_wash_total:  parsed.carwash_small + parsed.carwash_large,
+      car_wash_amount: parsed.carwash_amt,
+      gasoline_inv:    parsed.gas_inv,
+      diesel_inv:      parsed.diesel_inv,
+      kerosene_inv:    parsed.kero_inv,
+      updated_at:      new Date().toISOString(),
+    }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -201,22 +192,8 @@ export default function RetailSalesReport() {
       try {
         const wb = XLSX.read(e.target.result, { type: "array", cellDates: false });
         const parsed = parseMagamReport(wb);
-        await supaUpsert({
-          station:       uploadStation,
-          report_date:   parsed.dateStr,
-          gas_qty:       parsed.gas_qty,
-          gas_amt:       parsed.gas_amt,
-          diesel_qty:    parsed.diesel_qty,
-          diesel_amt:    parsed.diesel_amt,
-          kero_qty:      parsed.kero_qty,
-          kero_amt:      parsed.kero_amt,
-          gas_inv:       parsed.gas_inv,
-          diesel_inv:    parsed.diesel_inv,
-          kero_inv:      parsed.kero_inv,
-          carwash_small: parsed.carwash_small,
-          carwash_large: parsed.carwash_large,
-          carwash_amt:   parsed.carwash_amt,
-        });
+        const stInfo = STATIONS.find(s => s.name === uploadStation);
+        await supaUpsert(uploadStation, stInfo?.group || "", parsed);
         await reload();
         setDzInfo({ filename: file.name, date: parsed.dateStr, station: uploadStation });
         setDzState("done");
@@ -238,19 +215,19 @@ export default function RetailSalesReport() {
   const end      = `${selectedMonth}-${String(lastDay).padStart(2, "0")}`;
 
   const filtered = rows.filter(r => {
-    if (!r.report_date || r.report_date < start || r.report_date > end) return false;
-    if (selectedStation !== "전체" && r.station !== selectedStation) return false;
+    if (!r.date || r.date < start || r.date > end) return false;
+    if (selectedStation !== "전체" && r.station_name !== selectedStation) return false;
     return true;
   });
 
-  const months = [...new Set(rows.map(r => r.report_date?.substring(0, 7)).filter(Boolean))].sort();
+  const months = [...new Set(rows.map(r => r.date?.substring(0, 7)).filter(Boolean))].sort();
 
   const totals = { gas: 0, diesel: 0, kero: 0, carwash: 0 };
   filtered.forEach(r => {
-    totals.gas     += r.gas_qty     || 0;
-    totals.diesel  += r.diesel_qty  || 0;
-    totals.kero    += r.kero_qty    || 0;
-    totals.carwash += r.carwash_amt || 0;
+    totals.gas     += r.gasoline_qty    || 0;
+    totals.diesel  += r.diesel_qty      || 0;
+    totals.kero    += r.kerosene_qty    || 0;
+    totals.carwash += r.car_wash_amount || 0;
   });
   const grandQty = totals.gas + totals.diesel + totals.kero;
 
@@ -258,22 +235,22 @@ export default function RetailSalesReport() {
   const stationTotals = {};
   if (selectedStation === "전체") {
     filtered.forEach(r => {
-      if (!stationTotals[r.station]) {
-        const st = STATIONS.find(s => s.name === r.station);
-        stationTotals[r.station] = { gas: 0, diesel: 0, kero: 0, carwash: 0, total: 0, group: st?.group || "" };
+      const key = r.station_name;
+      if (!stationTotals[key]) {
+        stationTotals[key] = { gas: 0, diesel: 0, kero: 0, carwash: 0, total: 0, group: r.station_group || "" };
       }
-      const t = stationTotals[r.station];
-      t.gas     += r.gas_qty     || 0;
-      t.diesel  += r.diesel_qty  || 0;
-      t.kero    += r.kero_qty    || 0;
-      t.carwash += r.carwash_amt || 0;
-      t.total   += (r.gas_qty || 0) + (r.diesel_qty || 0) + (r.kero_qty || 0);
+      const t = stationTotals[key];
+      t.gas     += r.gasoline_qty    || 0;
+      t.diesel  += r.diesel_qty      || 0;
+      t.kero    += r.kerosene_qty    || 0;
+      t.carwash += r.car_wash_amount || 0;
+      t.total   += (r.gasoline_qty || 0) + (r.diesel_qty || 0) + (r.kerosene_qty || 0);
     });
   }
 
   // 상세 뷰: 일별
   const dailyRows = selectedStation !== "전체"
-    ? [...filtered].sort((a, b) => a.report_date.localeCompare(b.report_date))
+    ? [...filtered].sort((a, b) => a.date.localeCompare(b.date))
     : [];
 
   const stInfo  = STATIONS.find(s => s.name === selectedStation);
@@ -360,9 +337,7 @@ export default function RetailSalesReport() {
         <div style={{ background: "#fef3c7", border: "1px solid #fbbf24", borderRadius: 12, padding: "16px 20px", marginBottom: 20, fontSize: 13, color: "#92400e" }}>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>Supabase 테이블 설정 필요</div>
           <div style={{ marginBottom: 8 }}>Supabase 대시보드 → SQL Editor에서 아래 쿼리를 실행하세요:</div>
-          <pre style={{ background: "#fff", borderRadius: 8, padding: "12px", fontSize: 11, overflowX: "auto", color: "#111827", border: "1px solid #e5e7eb", margin: 0 }}>
-            {CREATE_TABLE_SQL}
-          </pre>
+          <div style={{ fontSize: 12, color: "#374151", marginTop: 4 }}>Supabase 대시보드 → Table Editor에서 <b>daily_station_report</b> 테이블을 생성하세요.</div>
           <button
             onClick={reload}
             style={{ marginTop: 10, padding: "6px 14px", background: "#d97706", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
@@ -534,16 +509,16 @@ export default function RetailSalesReport() {
                     </thead>
                     <tbody>
                       {dailyRows.map(r => {
-                        const rowTotal = (r.gas_qty || 0) + (r.diesel_qty || 0) + (r.kero_qty || 0);
+                        const rowTotal = (r.gasoline_qty || 0) + (r.diesel_qty || 0) + (r.kerosene_qty || 0);
                         return (
-                          <tr key={r.report_date}>
-                            <td style={{ ...td("left"), color: "#6b7280" }}>{r.report_date}</td>
-                            <td style={{ ...td("right"), color: r.gas_qty    > 0 ? "#2563eb" : "#d1d5db" }}>{fmtL(r.gas_qty)}</td>
-                            <td style={{ ...td("right"), color: r.diesel_qty > 0 ? "#059669" : "#d1d5db" }}>{fmtL(r.diesel_qty)}</td>
-                            <td style={{ ...td("right"), color: r.kero_qty   > 0 ? "#ea580c" : "#d1d5db" }}>{fmtL(r.kero_qty)}</td>
+                          <tr key={r.date}>
+                            <td style={{ ...td("left"), color: "#6b7280" }}>{r.date}</td>
+                            <td style={{ ...td("right"), color: r.gasoline_qty  > 0 ? "#2563eb" : "#d1d5db" }}>{fmtL(r.gasoline_qty)}</td>
+                            <td style={{ ...td("right"), color: r.diesel_qty    > 0 ? "#059669" : "#d1d5db" }}>{fmtL(r.diesel_qty)}</td>
+                            <td style={{ ...td("right"), color: r.kerosene_qty  > 0 ? "#ea580c" : "#d1d5db" }}>{fmtL(r.kerosene_qty)}</td>
                             <td style={{ ...td("right"), fontWeight: 600 }}>{fmtL(rowTotal)}</td>
-                            <td style={{ ...td("right"), color: "#7c3aed" }}>{fmtW(r.carwash_amt)}</td>
-                            <td style={{ ...td("right"), color: "#9ca3af", fontSize: 12 }}>{fmtL(r.gas_inv)}</td>
+                            <td style={{ ...td("right"), color: "#7c3aed" }}>{fmtW(r.car_wash_amount)}</td>
+                            <td style={{ ...td("right"), color: "#9ca3af", fontSize: 12 }}>{fmtL(r.gasoline_inv)}</td>
                             <td style={{ ...td("right"), color: "#9ca3af", fontSize: 12 }}>{fmtL(r.diesel_inv)}</td>
                           </tr>
                         );
