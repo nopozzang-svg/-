@@ -176,7 +176,7 @@ export default function RetailSalesReport() {
       setTableError(false);
       setRows(data);
       if (data.length) {
-        const months = [...new Set(data.map(r => r.report_date?.substring(0, 7)).filter(Boolean))].sort();
+        const months = [...new Set(data.map(r => r.date?.substring(0, 7)).filter(Boolean))].sort();
         setMonth(months[months.length - 1]);
       }
     }
