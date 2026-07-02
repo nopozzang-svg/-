@@ -221,6 +221,7 @@ export default function RetailSalesReport() {
   const [processing,     setProcessing]    = useState(false);
   const [results,        setResults]       = useState([]);
   const [drag,           setDrag]          = useState(false);
+  const [hoverRow,       setHoverRow]      = useState(null);
 
   const setMonthRange = useCallback((ym) => {
     setDateFrom(`${ym}-01`);
@@ -558,72 +559,76 @@ export default function RetailSalesReport() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: showKero ? 1100 : 920 }}>
                     <thead>
                       <tr>
-                        <th rowSpan={2} style={gh("left", true)}>주유소</th>
-                        <th rowSpan={2} style={gh("left", true)}>운영사</th>
-                        <th colSpan={showKero ? 4 : 3} style={gh("center", true, "#eff4ff")}>유류판매 ({modeLabel}·DM)</th>
-                        <th colSpan={showKero ? 3 : 2} style={gh("center", true, "#f0fdf4")}>현재고 (DM)</th>
-                        <th colSpan={showKero ? 3 : 2} style={gh("center", true, "#fff7ed")}>가용일수</th>
-                        <th colSpan={3} style={gh("center", true, "#faf5ff")}>세차</th>
+                        <th rowSpan={2} style={gh("left", false)}>주유소</th>
+                        <th rowSpan={2} style={gh("left", false)}>운영사</th>
+                        <th colSpan={showKero ? 4 : 3} style={gh("center", true, SEC_HEAD.sales)}>유류판매 ({modeLabel}·DM)</th>
+                        <th colSpan={showKero ? 3 : 2} style={gh("center", true, SEC_HEAD.inv)}>현재고 (DM)</th>
+                        <th colSpan={showKero ? 3 : 2} style={gh("center", true, SEC_HEAD.days)}>가용일수</th>
+                        <th colSpan={3} style={gh("center", true, SEC_HEAD.wash)}>세차</th>
                       </tr>
                       <tr>
-                        <th style={sh(C_GAS)}>무연</th>
-                        <th style={sh(C_DIESEL)}>경유</th>
-                        {showKero && <th style={sh(C_KERO)}>등유</th>}
-                        <th style={sh("#111827")}>판매계</th>
-                        <th style={sh(C_GAS)}>무연</th>
-                        <th style={sh(C_DIESEL)}>경유</th>
-                        {showKero && <th style={sh(C_KERO)}>등유</th>}
-                        <th style={sh(C_GAS)}>무연</th>
-                        <th style={sh(C_DIESEL)}>경유</th>
-                        {showKero && <th style={sh(C_KERO)}>등유</th>}
-                        <th style={sh("#6b7280")}>무료</th>
-                        <th style={sh("#6b7280")}>유료</th>
-                        <th style={sh(C_WASH)}>매출(천원)</th>
+                        <th style={sh(C_GAS,    SEC_HEAD.sales, true)}>무연</th>
+                        <th style={sh(C_DIESEL, SEC_HEAD.sales)}>경유</th>
+                        {showKero && <th style={sh(C_KERO, SEC_HEAD.sales)}>등유</th>}
+                        <th style={sh("#111827", SEC_HEAD.sales)}>판매계</th>
+                        <th style={sh(C_GAS,    SEC_HEAD.inv, true)}>무연</th>
+                        <th style={sh(C_DIESEL, SEC_HEAD.inv)}>경유</th>
+                        {showKero && <th style={sh(C_KERO, SEC_HEAD.inv)}>등유</th>}
+                        <th style={sh(C_GAS,    SEC_HEAD.days, true)}>무연</th>
+                        <th style={sh(C_DIESEL, SEC_HEAD.days)}>경유</th>
+                        {showKero && <th style={sh(C_KERO, SEC_HEAD.days)}>등유</th>}
+                        <th style={sh("#6b7280", SEC_HEAD.wash, true)}>무료</th>
+                        <th style={sh("#6b7280", SEC_HEAD.wash)}>유료</th>
+                        <th style={sh(C_WASH,   SEC_HEAD.wash)}>매출(천원)</th>
                       </tr>
                     </thead>
                     <tbody>
                       {aggs.map(a => {
                         const color = GROUP_COLORS[a.group] || "#6b7280";
+                        const hv = hoverRow === a.name;
+                        const S = hv ? SEC_HOVER : SEC_CELL;
+                        const nameBg = hv ? "#eef4ff" : "#fff";
                         return (
                           <tr key={a.name}
                             onClick={() => setStation(a.name)}
+                            onMouseEnter={() => setHoverRow(a.name)}
+                            onMouseLeave={() => setHoverRow(null)}
                             style={{ cursor: "pointer" }}
-                            onMouseEnter={e => (e.currentTarget.style.background = "#f8faff")}
-                            onMouseLeave={e => (e.currentTarget.style.background = "")}
                           >
-                            <td style={{ ...td("left"), fontWeight: 600 }}>{a.name}</td>
-                            <td style={td("left")}>
+                            <td style={{ ...td("left"), fontWeight: 600, background: nameBg }}>{a.name}</td>
+                            <td style={{ ...td("left"), background: nameBg }}>
                               <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", background: `${color}18`, color, borderRadius: 6 }}>{a.group}</span>
                             </td>
-                            <td style={{ ...td("right"), color: a.gas    > 0 ? C_GAS : "#d1d5db" }}>{fmtDM(a.gas)}</td>
-                            <td style={{ ...td("right"), color: a.diesel > 0 ? C_DIESEL : "#d1d5db" }}>{fmtDM(a.diesel)}</td>
-                            {showKero && <td style={{ ...td("right"), color: a.kero > 0 ? C_KERO : "#d1d5db" }}>{fmtDM(a.kero)}</td>}
-                            <td style={{ ...td("right"), fontWeight: 700 }}>{fmtDM(a.total)}</td>
-                            <td style={{ ...td("right"), color: "#374151" }}>{fmtDM(a.gasInv)}</td>
-                            <td style={{ ...td("right"), color: "#374151" }}>{fmtDM(a.dieselInv)}</td>
-                            {showKero && <td style={{ ...td("right"), color: "#374151" }}>{fmtDM(a.keroInv)}</td>}
-                            <td style={{ ...td("right"), fontWeight: 700, color: daysColor(a.gasDays) }}>{fmtDays(a.gasDays)}</td>
-                            <td style={{ ...td("right"), fontWeight: 700, color: daysColor(a.dieselDays) }}>{fmtDays(a.dieselDays)}</td>
-                            {showKero && <td style={{ ...td("right"), fontWeight: 700, color: daysColor(a.keroDays) }}>{fmtDays(a.keroDays)}</td>}
-                            <td style={{ ...td("right"), color: a.free > 0 ? "#374151" : "#d1d5db" }}>{fmtCnt(a.free)}</td>
-                            <td style={{ ...td("right"), color: a.paid > 0 ? "#374151" : "#d1d5db" }}>{fmtCnt(a.paid)}</td>
-                            <td style={{ ...td("right"), color: C_WASH }}>{fmtKW(a.washAmt)}</td>
+                            <td style={secTd(S.sales, true,  a.gas    > 0 ? C_GAS : "#c9cdd3")}>{fmtDM(a.gas)}</td>
+                            <td style={secTd(S.sales, false, a.diesel > 0 ? C_DIESEL : "#c9cdd3")}>{fmtDM(a.diesel)}</td>
+                            {showKero && <td style={secTd(S.sales, false, a.kero > 0 ? C_KERO : "#c9cdd3")}>{fmtDM(a.kero)}</td>}
+                            <td style={{ ...secTd(S.sales, false, "#111827"), fontWeight: 700 }}>{fmtDM(a.total)}</td>
+                            <td style={secTd(S.inv, true,  "#374151")}>{fmtDM(a.gasInv)}</td>
+                            <td style={secTd(S.inv, false, "#374151")}>{fmtDM(a.dieselInv)}</td>
+                            {showKero && <td style={secTd(S.inv, false, "#374151")}>{fmtDM(a.keroInv)}</td>}
+                            <td style={{ ...secTd(S.days, true,  daysColor(a.gasDays)),    fontWeight: 700 }}>{fmtDays(a.gasDays)}</td>
+                            <td style={{ ...secTd(S.days, false, daysColor(a.dieselDays)), fontWeight: 700 }}>{fmtDays(a.dieselDays)}</td>
+                            {showKero && <td style={{ ...secTd(S.days, false, daysColor(a.keroDays)), fontWeight: 700 }}>{fmtDays(a.keroDays)}</td>}
+                            <td style={secTd(S.wash, true,  a.free > 0 ? "#374151" : "#c9cdd3")}>{fmtCnt(a.free)}</td>
+                            <td style={secTd(S.wash, false, a.paid > 0 ? "#374151" : "#c9cdd3")}>{fmtCnt(a.paid)}</td>
+                            <td style={secTd(S.wash, false, C_WASH)}>{fmtKW(a.washAmt)}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                     <tfoot>
-                      <tr style={{ background: "#f0f4ff", borderTop: "2px solid #c7d7f5" }}>
-                        <td style={{ ...td("left"), fontWeight: 700 }} colSpan={2}>합계</td>
-                        <td style={{ ...td("right"), fontWeight: 700, color: C_GAS }}>{fmtDM(grand.gas)}</td>
-                        <td style={{ ...td("right"), fontWeight: 700, color: C_DIESEL }}>{fmtDM(grand.diesel)}</td>
-                        {showKero && <td style={{ ...td("right"), fontWeight: 700, color: C_KERO }}>{fmtDM(grand.kero)}</td>}
-                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtDM(grandTotal)}</td>
+                      <tr style={{ borderTop: "2px solid #c7d7f5" }}>
+                        <td style={{ ...td("left"), fontWeight: 700, background: "#eef2f7" }} colSpan={2}>합계</td>
+                        <td style={{ ...secTd(SEC_HOVER.sales, true,  C_GAS),    fontWeight: 700 }}>{fmtDM(grand.gas)}</td>
+                        <td style={{ ...secTd(SEC_HOVER.sales, false, C_DIESEL), fontWeight: 700 }}>{fmtDM(grand.diesel)}</td>
+                        {showKero && <td style={{ ...secTd(SEC_HOVER.sales, false, C_KERO), fontWeight: 700 }}>{fmtDM(grand.kero)}</td>}
+                        <td style={{ ...secTd(SEC_HOVER.sales, false, "#111827"), fontWeight: 700 }}>{fmtDM(grandTotal)}</td>
                         {/* 재고·가용일수 합계는 의미가 없어 생략 */}
-                        <td colSpan={showKero ? 6 : 4} />
-                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtCnt(visibleAggs.reduce((s, a) => s + a.free, 0))}</td>
-                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtCnt(visibleAggs.reduce((s, a) => s + a.paid, 0))}</td>
-                        <td style={{ ...td("right"), fontWeight: 700, color: C_WASH }}>{fmtKW(grand.washAmt)}</td>
+                        <td style={secTd(SEC_HOVER.inv, true, "#374151")} colSpan={showKero ? 3 : 2} />
+                        <td style={secTd(SEC_HOVER.days, true, "#374151")} colSpan={showKero ? 3 : 2} />
+                        <td style={{ ...secTd(SEC_HOVER.wash, true,  "#374151"), fontWeight: 700 }}>{fmtCnt(visibleAggs.reduce((s, a) => s + a.free, 0))}</td>
+                        <td style={{ ...secTd(SEC_HOVER.wash, false, "#374151"), fontWeight: 700 }}>{fmtCnt(visibleAggs.reduce((s, a) => s + a.paid, 0))}</td>
+                        <td style={{ ...secTd(SEC_HOVER.wash, false, C_WASH), fontWeight: 700 }}>{fmtKW(grand.washAmt)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -755,13 +760,24 @@ const gh = (align, bordered, bg) => ({
   whiteSpace: "nowrap", verticalAlign: "middle",
 });
 // 서브 헤더 (하단, 유종)
-const sh = (color) => ({
+const sh = (color, bg, first) => ({
   padding: "7px 12px", textAlign: "right", fontWeight: 600, color,
-  fontSize: 11, background: "#f9fafb", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap",
+  fontSize: 11, background: bg || "#f9fafb", borderBottom: "1px solid #e5e7eb",
+  borderLeft: first ? "1px solid #dfe3e8" : undefined, whiteSpace: "nowrap",
 });
 const td = (align) => ({
   padding: "9px 12px", textAlign: align, borderBottom: "1px solid #f3f4f6",
   color: "#374151", whiteSpace: "nowrap",
+});
+// 구역별 색상 (헤더=진하게, 데이터=옅게, hover=중간)
+const SEC_HEAD  = { sales: "#dbe6ff", inv: "#d3f5e0", days: "#ffe6cc", wash: "#ecdcff" };
+const SEC_CELL  = { sales: "#f5f8ff", inv: "#f4fdf8", days: "#fffbf4", wash: "#fbf7ff" };
+const SEC_HOVER = { sales: "#e9f0ff", inv: "#e6f8ee", days: "#fdf2e2", wash: "#f4ebff" };
+// 구역 데이터 셀 (배경 + 구역 시작 경계선 + 글자색)
+const secTd = (bg, first, color) => ({
+  padding: "9px 12px", textAlign: "right", borderBottom: "1px solid #f3f4f6",
+  background: bg, color, whiteSpace: "nowrap",
+  borderLeft: first ? "1px solid #dfe3e8" : undefined,
 });
 const chipStyle = (active) => ({
   padding: "6px 12px", borderRadius: 8, border: "none", fontSize: 12, cursor: "pointer",
