@@ -1,5 +1,5 @@
-// RetailSalesReport.jsx  –  소매 주유소 마감일보 파싱 및 판매량 표시
-// 도매(SalesReport.jsx)와 완전히 독립된 시스템
+// RetailSalesReport.jsx  –  소매 주유소 마감일보 파싱 및 판매 현황 대시보드
+// 도매(SalesReport.jsx)와 완전히 독립된 시스템 — 이 파일만 수정하면 다른 탭에 영향 없음
 
 import { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
@@ -18,8 +18,8 @@ const supaHeaders = {
 // gasoline_qty, gasoline_amount, diesel_qty, diesel_amount,
 // kerosene_qty, total_qty, total_amount,
 // car_wash_small, car_wash_large, car_wash_total, car_wash_amount,
+// car_wash_free, car_wash_paid,
 // gasoline_inv, diesel_inv, kerosene_inv,
-// gasoline_inv_prev, diesel_inv_prev, kerosene_inv_prev,
 // created_at, updated_at
 
 const STATIONS = [
@@ -38,6 +38,11 @@ const GROUP_COLORS = {
   "세영TMS":   "#d97706",
 };
 
+// 단위 상수
+const DM_LITERS = 200; // 1 DM = 200 L (드럼)
+
+// 유종 색상
+const C_GAS = "#2563eb", C_DIESEL = "#059669", C_KERO = "#ea580c", C_WASH = "#7c3aed";
 
 // ── 파싱 ────────────────────────────────────────────────────────
 function parseNum(val) {
@@ -48,16 +53,16 @@ function parseNum(val) {
   return parseFloat(s) || 0;
 }
 
-// 마감일보 CSV/XLS 파싱 (0-indexed row, 0-indexed col)
+// 마감일보 파싱 (0-indexed row, 0-indexed col)  — "마감장" 시트
 // Row 3:  날짜  - col[3]=년(2자리), col[5]=월, col[7]=일
-// Row 8:  무연 재고 - col[3]=전일재고, col[24]=장부재고(현재고)
-// Row 21: 경유 재고 - col[3]=전일재고, col[24]=장부재고(현재고)
-// Row 33: 등유 재고 - col[3]=전일재고, col[24]=장부재고(현재고)
+// Row 8:  무연 재고 - col[24]=장부재고(현재고)
+// Row 21: 경유 재고 - col[24]=장부재고(현재고)
+// Row 33: 등유 재고 - col[24]=장부재고(현재고)
 // Row 39: 무연 판매 - col[15]=수량, col[18]=매출
 // Row 40: 경유 판매 - col[15]=수량, col[18]=매출
 // Row 41: 등유 판매 - col[15]=수량, col[18]=매출
-// Row 59: 세차 대수 - col[3]=소형, col[7]=대형
 // Row 63: 세차 금액 - col[3]=총금액
+// 세차 대수(무료/유료)는 "세차" 시트에서 파싱 (구조가 주유소 간 통일돼 있음)
 function parseMagamReport(workbook) {
   // 파일마다 첫 시트가 다르므로(예: 남부순환로 = "Chart1") "마감장" 시트를 이름으로 찾는다
   const sheetName = workbook.SheetNames.includes("마감장")
@@ -78,6 +83,20 @@ function parseMagamReport(workbook) {
   const year    = yearSuffix.length === 2 ? `20${yearSuffix}` : yearSuffix;
   const dateStr = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 
+  // 세차 시트에서 무료/유료 대수 파싱
+  let carwash_free = 0, carwash_paid = 0;
+  if (workbook.SheetNames.includes("세차")) {
+    const cw = XLSX.utils.sheet_to_json(workbook.Sheets["세차"], { header: 1, defval: "" });
+    const dayNum = parseInt(day, 10);
+    for (let r = 6; r < cw.length; r++) {
+      if (parseInt(String(cw[r]?.[0]).trim(), 10) === dayNum) {
+        carwash_free = parseNum(cw[r][3]); // 무료 소계
+        carwash_paid = parseNum(cw[r][6]); // 유료 소계
+        break;
+      }
+    }
+  }
+
   return {
     dateStr,
     gas_qty:       parseNum(g(39, 15)),
@@ -89,12 +108,9 @@ function parseMagamReport(workbook) {
     gas_inv:       parseNum(g(8,  24)),
     diesel_inv:    parseNum(g(21, 24)),
     kero_inv:      parseNum(g(33, 24)),
-    gas_inv_prev:    parseNum(g(8,  3)),
-    diesel_inv_prev: parseNum(g(21, 3)),
-    kero_inv_prev:   parseNum(g(33, 3)),
-    carwash_small: parseNum(g(59,  3)),
-    carwash_large: parseNum(g(59,  7)),
-    carwash_amt:   parseNum(g(63,  3)),
+    carwash_free,
+    carwash_paid,
+    carwash_amt:   parseNum(g(63, 3)),
   };
 }
 
@@ -120,8 +136,8 @@ async function supaUpsert(stationName, stationGroup, parsed) {
     { method: "DELETE", headers: supaHeaders }
   );
 
-  const total_qty    = parsed.gas_qty    + parsed.diesel_qty    + parsed.kero_qty;
-  const total_amount = parsed.gas_amt    + parsed.diesel_amt    + parsed.kero_amt;
+  const total_qty    = parsed.gas_qty + parsed.diesel_qty + parsed.kero_qty;
+  const total_amount = parsed.gas_amt + parsed.diesel_amt + parsed.kero_amt;
 
   const res = await fetch(`${SUPABASE_URL}/rest/v1/daily_station_report`, {
     method: "POST",
@@ -137,16 +153,13 @@ async function supaUpsert(stationName, stationGroup, parsed) {
       kerosene_qty:    parsed.kero_qty,
       total_qty,
       total_amount,
-      car_wash_small:  parsed.carwash_small,
-      car_wash_large:  parsed.carwash_large,
-      car_wash_total:  parsed.carwash_small + parsed.carwash_large,
+      car_wash_free:   parsed.carwash_free,
+      car_wash_paid:   parsed.carwash_paid,
+      car_wash_total:  parsed.carwash_free + parsed.carwash_paid,
       car_wash_amount: parsed.carwash_amt,
       gasoline_inv:    parsed.gas_inv,
       diesel_inv:      parsed.diesel_inv,
       kerosene_inv:    parsed.kero_inv,
-      gasoline_inv_prev: parsed.gas_inv_prev,
-      diesel_inv_prev:   parsed.diesel_inv_prev,
-      kerosene_inv_prev: parsed.kero_inv_prev,
       updated_at:      new Date().toISOString(),
     }),
   });
@@ -156,10 +169,25 @@ async function supaUpsert(stationName, stationGroup, parsed) {
   }
 }
 
-// ── 유틸 ─────────────────────────────────────────────────────────
-const fmtL = (v) => (v > 0 ? Math.round(v).toLocaleString() : "—");
-const fmtW = (v) => (v > 0 ? Math.round(v).toLocaleString() : "—");
+// ── 포맷 유틸 ────────────────────────────────────────────────────
+// 유류: L → DM (1 DM = 200 L), 소수 1자리
+const fmtDM = (l) =>
+  l > 0 ? (l / DM_LITERS).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : "—";
+// 세차 매출: 원 → 천원
+const fmtKW = (won) => (won > 0 ? Math.round(won / 1000).toLocaleString() : "—");
+// 대수 (평균 모드에서는 소수 가능)
+const fmtCnt = (n) => (n > 0 ? n.toLocaleString("ko-KR", { maximumFractionDigits: 1 }) : "—");
+// 가용일수
+const fmtDays = (d) => (d == null ? "—" : d.toLocaleString("ko-KR", { maximumFractionDigits: 1 }));
 
+// 가용일수 색상: 3일 미만 빨강 / 7일 이내 주황 / 그 외 초록
+const daysColor = (d) =>
+  d == null ? "#d1d5db" : d < 3 ? "#ef4444" : d <= 7 ? "#d97706" : "#16a34a";
+
+const monthLastDay = (ym) => {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m, 0).getDate();
+};
 function getMonthStr(offset = 0) {
   const d = new Date();
   d.setMonth(d.getMonth() + offset);
@@ -172,11 +200,19 @@ export default function RetailSalesReport() {
   const [loading,        setLoading]       = useState(true);
   const [tableError,     setTableError]    = useState(false);
   const [selectedStation, setStation]      = useState("전체");
-  const [selectedMonth,  setMonth]         = useState(getMonthStr(0));
+  const [dateFrom,       setDateFrom]      = useState("");
+  const [dateTo,         setDateTo]        = useState("");
+  const [avgMode,        setAvgMode]       = useState(false);   // false=합계, true=일평균
+  const [showKero,       setShowKero]      = useState(false);   // 등유 컬럼 표시
   const [uploadStation,  setUploadStation] = useState(STATIONS[0].name);
   const [dzState,        setDzState]       = useState("idle");
   const [dzInfo,         setDzInfo]        = useState(null);
   const [drag,           setDrag]          = useState(false);
+
+  const setMonthRange = useCallback((ym) => {
+    setDateFrom(`${ym}-01`);
+    setDateTo(`${ym}-${String(monthLastDay(ym)).padStart(2, "0")}`);
+  }, []);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -188,11 +224,15 @@ export default function RetailSalesReport() {
       setRows(data);
       if (data.length) {
         const months = [...new Set(data.map(r => r.date?.substring(0, 7)).filter(Boolean))].sort();
-        setMonth(months[months.length - 1]);
+        const latest = months[months.length - 1];
+        setDateFrom(`${latest}-01`);
+        setDateTo(`${latest}-${String(monthLastDay(latest)).padStart(2, "0")}`);
+      } else {
+        setMonthRange(getMonthStr(0));
       }
     }
     setLoading(false);
-  }, []);
+  }, [setMonthRange]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -209,7 +249,7 @@ export default function RetailSalesReport() {
         setDzInfo({ filename: file.name, date: parsed.dateStr, station: uploadStation });
         setDzState("done");
         setStation(uploadStation);
-        setMonth(parsed.dateStr.substring(0, 7));
+        setMonthRange(parsed.dateStr.substring(0, 7));
       } catch (err) {
         console.error(err);
         setDzInfo({ error: err.message });
@@ -217,86 +257,76 @@ export default function RetailSalesReport() {
       }
     };
     reader.readAsArrayBuffer(file);
-  }, [uploadStation, reload]);
+  }, [uploadStation, reload, setMonthRange]);
 
-  // ── 필터 ──────────────────────────────────────────────────────
-  const [yr, mo] = selectedMonth.split("-").map(Number);
-  const lastDay  = new Date(yr, mo, 0).getDate();
-  const start    = `${selectedMonth}-01`;
-  const end      = `${selectedMonth}-${String(lastDay).padStart(2, "0")}`;
-
-  const filtered = rows.filter(r => {
-    if (!r.date || r.date < start || r.date > end) return false;
-    if (selectedStation !== "전체" && r.station_name !== selectedStation) return false;
-    return true;
-  });
-
+  // ── 구간 필터 ──────────────────────────────────────────────────
+  const rangeRows = rows.filter(r => r.date && r.date >= dateFrom && r.date <= dateTo);
   const months = [...new Set(rows.map(r => r.date?.substring(0, 7)).filter(Boolean))].sort();
+  const allDates = rows.map(r => r.date).filter(Boolean).sort();
+  const isAllRange = allDates.length > 0 && dateFrom === allDates[0] && dateTo === allDates[allDates.length - 1];
 
-  const totals = { gas: 0, diesel: 0, kero: 0, carwash: 0 };
-  filtered.forEach(r => {
-    totals.gas     += r.gasoline_qty    || 0;
-    totals.diesel  += r.diesel_qty      || 0;
-    totals.kero    += r.kerosene_qty    || 0;
-    totals.carwash += r.car_wash_amount || 0;
-  });
-  const grandQty = totals.gas + totals.diesel + totals.kero;
-
-  // 전체 뷰: 주유소별 집계
-  const stationTotals = {};
-  if (selectedStation === "전체") {
-    filtered.forEach(r => {
-      const key = r.station_name;
-      if (!stationTotals[key]) {
-        stationTotals[key] = { gas: 0, diesel: 0, kero: 0, carwash: 0, total: 0, group: r.station_group || "" };
-      }
-      const t = stationTotals[key];
-      t.gas     += r.gasoline_qty    || 0;
-      t.diesel  += r.diesel_qty      || 0;
-      t.kero    += r.kerosene_qty    || 0;
-      t.carwash += r.car_wash_amount || 0;
-      t.total   += (r.gasoline_qty || 0) + (r.diesel_qty || 0) + (r.kerosene_qty || 0);
+  // ── 주유소별 집계 ──────────────────────────────────────────────
+  function aggregate(list) {
+    const dates = new Set();
+    let gas = 0, diesel = 0, kero = 0, free = 0, paid = 0, washAmt = 0;
+    let latest = null;
+    list.forEach(r => {
+      dates.add(r.date);
+      gas    += r.gasoline_qty    || 0;
+      diesel += r.diesel_qty      || 0;
+      kero   += r.kerosene_qty    || 0;
+      free   += r.car_wash_free   || 0;
+      paid   += r.car_wash_paid   || 0;
+      washAmt += r.car_wash_amount || 0;
+      if (!latest || r.date > latest.date) latest = r;
     });
+    const nDays = dates.size || 1;
+    // 표시값: 평균 모드면 /일수
+    const d = (v) => (avgMode ? v / nDays : v);
+    // 가용일수: 현재고 ÷ (구간 일평균 판매량)  — 모드와 무관
+    const days = (inv, sum) => (sum > 0 ? inv / (sum / nDays) : null);
+    return {
+      nDays,
+      gas: d(gas), diesel: d(diesel), kero: d(kero),
+      total: d(gas + diesel + kero),
+      free: d(free), paid: d(paid), washAmt: d(washAmt),
+      gasInv:    latest?.gasoline_inv || 0,
+      dieselInv: latest?.diesel_inv   || 0,
+      keroInv:   latest?.kerosene_inv || 0,
+      gasDays:    days(latest?.gasoline_inv || 0, gas),
+      dieselDays: days(latest?.diesel_inv   || 0, diesel),
+      keroDays:   days(latest?.kerosene_inv || 0, kero),
+      latestDate: latest?.date,
+    };
   }
+
+  const stationNames = [...new Set(rangeRows.map(r => r.station_name))];
+  const aggs = stationNames.map(name => {
+    const sr = rangeRows.filter(r => r.station_name === name);
+    const a = aggregate(sr);
+    a.name = name;
+    a.group = sr[0]?.station_group || STATIONS.find(s => s.name === name)?.group || "";
+    return a;
+  }).sort((a, b) => b.total - a.total);
+
+  // 표시 대상 (전체 or 특정 주유소)
+  const visibleAggs = selectedStation === "전체" ? aggs : aggs.filter(a => a.name === selectedStation);
+
+  // 요약 카드용 총계 (표시값 합)
+  const grand = visibleAggs.reduce((t, a) => {
+    t.gas += a.gas; t.diesel += a.diesel; t.kero += a.kero; t.washAmt += a.washAmt;
+    return t;
+  }, { gas: 0, diesel: 0, kero: 0, washAmt: 0 });
+  const grandTotal = grand.gas + grand.diesel + grand.kero;
 
   // 상세 뷰: 일별
   const dailyRows = selectedStation !== "전체"
-    ? [...filtered].sort((a, b) => a.date.localeCompare(b.date))
+    ? [...rangeRows.filter(r => r.station_name === selectedStation)].sort((a, b) => a.date.localeCompare(b.date))
     : [];
 
   const stInfo  = STATIONS.find(s => s.name === selectedStation);
   const stColor = GROUP_COLORS[stInfo?.group] || "#2563eb";
-
-  // 재고 현황 & 가용일수 (최신일 기준, 최근 7일 평균 판매량)
-  // 전체 데이터(rows) 기준으로 계산 → 월 경계와 무관하게 안정적
-  const status = (() => {
-    if (selectedStation === "전체") return null;
-    const sr = rows
-      .filter(r => r.station_name === selectedStation && r.date)
-      .sort((a, b) => b.date.localeCompare(a.date));
-    if (!sr.length) return null;
-    const latest = sr[0];
-    const last7  = sr.slice(0, 7);
-    const avgQty = (key) =>
-      last7.reduce((s, r) => s + (r[key] || 0), 0) / last7.length;
-    const mk = (invKey, prevKey, qtyKey) => {
-      const inv = latest[invKey] || 0;
-      const avg = avgQty(qtyKey);
-      return { prev: latest[prevKey] || 0, inv, avg, days: avg > 0 ? inv / avg : null };
-    };
-    return {
-      date: latest.date,
-      n:    last7.length,
-      fuels: [
-        { key: "gas",    label: "휘발유", color: "#2563eb", ...mk("gasoline_inv", "gasoline_inv_prev", "gasoline_qty") },
-        { key: "diesel", label: "경유",   color: "#059669", ...mk("diesel_inv",   "diesel_inv_prev",   "diesel_qty") },
-        { key: "kero",   label: "등유",   color: "#ea580c", ...mk("kerosene_inv", "kerosene_inv_prev", "kerosene_qty") },
-      ].filter(f => f.inv > 0 || f.prev > 0),
-    };
-  })();
-
-  const daysColor = (d) =>
-    d == null ? "#9ca3af" : d < 5 ? "#ef4444" : d < 10 ? "#d97706" : "#16a34a";
+  const modeLabel = avgMode ? "일평균" : "합계";
 
   return (
     <div style={{ paddingBottom: 40 }}>
@@ -347,7 +377,7 @@ export default function RetailSalesReport() {
           {dzState === "error" && (
             <div>
               <div style={{ color: "#ef4444", fontSize: 13, marginBottom: 4 }}>파일 파싱 실패</div>
-              <div style={{ color: "#9ca3af", fontSize: 11 }}>{dzInfo?.error || "마감일보 CSV/XLS 형식을 확인하세요"}</div>
+              <div style={{ color: "#9ca3af", fontSize: 11 }}>{dzInfo?.error || "마감일보 형식을 확인하세요"}</div>
               <div style={{ color: "#9ca3af", fontSize: 11, marginTop: 4 }}>클릭하여 다시 시도</div>
             </div>
           )}
@@ -361,13 +391,13 @@ export default function RetailSalesReport() {
             <>
               <div style={{ fontSize: 22, marginBottom: 6 }}>📂</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>마감일보 파일 드롭 또는 클릭</div>
-              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>.csv / .xls / .xlsx</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>.xls / .xlsx / .xlsm</div>
             </>
           )}
           <input
             id="retail-magam-input"
             type="file"
-            accept=".csv,.xls,.xlsx"
+            accept=".csv,.xls,.xlsx,.xlsm"
             style={{ display: "none" }}
             onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ""; }}
           />
@@ -378,7 +408,6 @@ export default function RetailSalesReport() {
       {tableError && (
         <div style={{ background: "#fef3c7", border: "1px solid #fbbf24", borderRadius: 12, padding: "16px 20px", marginBottom: 20, fontSize: 13, color: "#92400e" }}>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>Supabase 테이블 설정 필요</div>
-          <div style={{ marginBottom: 8 }}>Supabase 대시보드 → SQL Editor에서 아래 쿼리를 실행하세요:</div>
           <div style={{ fontSize: 12, color: "#374151", marginTop: 4 }}>Supabase 대시보드 → Table Editor에서 <b>daily_station_report</b> 테이블을 생성하세요.</div>
           <button
             onClick={reload}
@@ -391,27 +420,57 @@ export default function RetailSalesReport() {
 
       {/* ── 필터 바 ── */}
       {!tableError && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-          <select
-            value={selectedStation}
-            onChange={e => setStation(e.target.value)}
-            style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 13, color: "#111827", background: "#fff", cursor: "pointer", minWidth: 170 }}
-          >
-            <option value="전체">전체 주유소</option>
-            {["세일직영", "엘앤케이", "세영TMS"].map(grp => (
-              <optgroup key={grp} label={grp}>
-                {STATIONS.filter(s => s.group === grp).map(s => (
-                  <option key={s.name} value={s.name}>{s.name}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <select
+              value={selectedStation}
+              onChange={e => setStation(e.target.value)}
+              style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 13, color: "#111827", background: "#fff", cursor: "pointer", minWidth: 150 }}
+            >
+              <option value="전체">전체 주유소</option>
+              {["세일직영", "엘앤케이", "세영TMS"].map(grp => (
+                <optgroup key={grp} label={grp}>
+                  {STATIONS.filter(s => s.group === grp).map(s => (
+                    <option key={s.name} value={s.name}>{s.name}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+
+            {/* 날짜 구간 */}
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              style={dateInput} />
+            <span style={{ fontSize: 12, color: "#9ca3af" }}>~</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              style={dateInput} />
+
+            {/* 평균 토글 */}
+            <button onClick={() => setAvgMode(v => !v)} style={toggleBtn(avgMode)}>
+              평균
+            </button>
+            {/* 등유 토글 */}
+            <button onClick={() => setShowKero(v => !v)} style={toggleBtn(showKero)}>
+              등유
+            </button>
+            <span style={{ fontSize: 11, color: "#9ca3af" }}>
+              {modeLabel} · 유류 DM(1DM=200L) · 세차매출 천원
+            </span>
+          </div>
+
+          {/* 월 칩 */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {months.map(m => (
-              <button key={m} onClick={() => setMonth(m)} style={chipStyle(selectedMonth === m)}>
-                {m.replace("-", "년 ")}월
-              </button>
-            ))}
+            <button
+              onClick={() => { if (allDates.length) { setDateFrom(allDates[0]); setDateTo(allDates[allDates.length - 1]); } }}
+              style={chipStyle(isAllRange)}
+            >전체</button>
+            {months.map(m => {
+              const active = dateFrom === `${m}-01` && dateTo === `${m}-${String(monthLastDay(m)).padStart(2, "0")}`;
+              return (
+                <button key={m} onClick={() => setMonthRange(m)} style={chipStyle(active)}>
+                  {m.replace("-", "년 ")}월
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -434,13 +493,13 @@ export default function RetailSalesReport() {
       {!loading && !tableError && rows.length > 0 && (
         <>
           {/* 요약 카드 */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 20 }}>
             {[
-              { label: "총 판매량",  value: fmtL(grandQty),      unit: "L",  color: "#111827" },
-              { label: "휘발유",     value: fmtL(totals.gas),    unit: "L",  color: "#2563eb" },
-              { label: "경유",       value: fmtL(totals.diesel), unit: "L",  color: "#059669" },
-              ...(totals.kero > 0 ? [{ label: "등유", value: fmtL(totals.kero), unit: "L", color: "#ea580c" }] : []),
-              { label: "세차매출",   value: fmtW(totals.carwash), unit: "원", color: "#7c3aed" },
+              { label: `총 판매량 (${modeLabel})`, value: fmtDM(grandTotal),  unit: "DM", color: "#111827" },
+              { label: "휘발유", value: fmtDM(grand.gas),    unit: "DM", color: C_GAS },
+              { label: "경유",   value: fmtDM(grand.diesel), unit: "DM", color: C_DIESEL },
+              ...(showKero ? [{ label: "등유", value: fmtDM(grand.kero), unit: "DM", color: C_KERO }] : []),
+              { label: "세차매출", value: fmtKW(grand.washAmt), unit: "천원", color: C_WASH },
             ].map(c => (
               <div key={c.label} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, marginBottom: 4 }}>{c.label}</div>
@@ -452,70 +511,97 @@ export default function RetailSalesReport() {
             ))}
           </div>
 
-          {/* ── 전체: 주유소별 집계 ── */}
+          {/* ── 전체: 주유소별 통합 현황판 ── */}
           {selectedStation === "전체" && (
             <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", overflow: "hidden" }}>
               <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontSize: 14, fontWeight: 700, color: "#111827" }}>
-                주유소별 판매량
+                주유소별 판매 현황
                 <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginLeft: 6 }}>
-                  {selectedMonth.replace("-", "년 ")}월 · 단위: L · 클릭하여 상세 조회
+                  {dateFrom} ~ {dateTo} · 유류 {modeLabel}(DM) · 세차매출 천원 · 클릭하여 상세
                 </span>
               </div>
-              {Object.keys(stationTotals).length === 0 ? (
-                <div style={{ padding: 40, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>해당 월에 데이터가 없습니다</div>
+              {aggs.length === 0 ? (
+                <div style={{ padding: 40, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>해당 구간에 데이터가 없습니다</div>
               ) : (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: "#f9fafb" }}>
-                      <th style={th("left")}>주유소</th>
-                      <th style={th("left")}>그룹</th>
-                      <th style={{ ...th("right"), color: "#2563eb" }}>휘발유</th>
-                      <th style={{ ...th("right"), color: "#059669" }}>경유</th>
-                      <th style={{ ...th("right"), color: "#ea580c" }}>등유</th>
-                      <th style={{ ...th("right"), fontWeight: 700 }}>합계</th>
-                      <th style={{ ...th("right"), color: "#7c3aed" }}>세차매출</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(stationTotals).sort((a, b) => b[1].total - a[1].total).map(([name, t]) => {
-                      const color = GROUP_COLORS[t.group] || "#6b7280";
-                      return (
-                        <tr
-                          key={name}
-                          onClick={() => setStation(name)}
-                          style={{ cursor: "pointer" }}
-                          onMouseEnter={e => (e.currentTarget.style.background = "#f8faff")}
-                          onMouseLeave={e => (e.currentTarget.style.background = "")}
-                        >
-                          <td style={{ ...td("left"), fontWeight: 600 }}>{name}</td>
-                          <td style={td("left")}>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", background: `${color}18`, color, borderRadius: 6 }}>{t.group}</span>
-                          </td>
-                          <td style={{ ...td("right"), color: t.gas    > 0 ? "#2563eb" : "#d1d5db" }}>{fmtL(t.gas)}</td>
-                          <td style={{ ...td("right"), color: t.diesel > 0 ? "#059669" : "#d1d5db" }}>{fmtL(t.diesel)}</td>
-                          <td style={{ ...td("right"), color: t.kero   > 0 ? "#ea580c" : "#d1d5db" }}>{fmtL(t.kero)}</td>
-                          <td style={{ ...td("right"), fontWeight: 700 }}>{fmtL(t.total)}</td>
-                          <td style={{ ...td("right"), color: "#7c3aed" }}>{fmtW(t.carwash)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{ background: "#f0f4ff", borderTop: "2px solid #c7d7f5" }}>
-                      <td style={{ ...td("left"), fontWeight: 700 }} colSpan={2}>합계</td>
-                      <td style={{ ...td("right"), fontWeight: 700, color: "#2563eb" }}>{fmtL(totals.gas)}</td>
-                      <td style={{ ...td("right"), fontWeight: 700, color: "#059669" }}>{fmtL(totals.diesel)}</td>
-                      <td style={{ ...td("right"), fontWeight: 700, color: "#ea580c" }}>{fmtL(totals.kero)}</td>
-                      <td style={{ ...td("right"), fontWeight: 700 }}>{fmtL(grandQty)}</td>
-                      <td style={{ ...td("right"), fontWeight: 700, color: "#7c3aed" }}>{fmtW(totals.carwash)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: showKero ? 1100 : 920 }}>
+                    <thead>
+                      <tr>
+                        <th rowSpan={2} style={gh("left", true)}>주유소</th>
+                        <th rowSpan={2} style={gh("left", true)}>운영사</th>
+                        <th colSpan={showKero ? 4 : 3} style={gh("center", true, "#eff4ff")}>유류판매 ({modeLabel}·DM)</th>
+                        <th colSpan={showKero ? 3 : 2} style={gh("center", true, "#f0fdf4")}>현재고 (DM)</th>
+                        <th colSpan={showKero ? 3 : 2} style={gh("center", true, "#fff7ed")}>가용일수</th>
+                        <th colSpan={3} style={gh("center", true, "#faf5ff")}>세차</th>
+                      </tr>
+                      <tr>
+                        <th style={sh(C_GAS)}>무연</th>
+                        <th style={sh(C_DIESEL)}>경유</th>
+                        {showKero && <th style={sh(C_KERO)}>등유</th>}
+                        <th style={sh("#111827")}>판매계</th>
+                        <th style={sh(C_GAS)}>무연</th>
+                        <th style={sh(C_DIESEL)}>경유</th>
+                        {showKero && <th style={sh(C_KERO)}>등유</th>}
+                        <th style={sh(C_GAS)}>무연</th>
+                        <th style={sh(C_DIESEL)}>경유</th>
+                        {showKero && <th style={sh(C_KERO)}>등유</th>}
+                        <th style={sh("#6b7280")}>무료</th>
+                        <th style={sh("#6b7280")}>유료</th>
+                        <th style={sh(C_WASH)}>매출(천원)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aggs.map(a => {
+                        const color = GROUP_COLORS[a.group] || "#6b7280";
+                        return (
+                          <tr key={a.name}
+                            onClick={() => setStation(a.name)}
+                            style={{ cursor: "pointer" }}
+                            onMouseEnter={e => (e.currentTarget.style.background = "#f8faff")}
+                            onMouseLeave={e => (e.currentTarget.style.background = "")}
+                          >
+                            <td style={{ ...td("left"), fontWeight: 600 }}>{a.name}</td>
+                            <td style={td("left")}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", background: `${color}18`, color, borderRadius: 6 }}>{a.group}</span>
+                            </td>
+                            <td style={{ ...td("right"), color: a.gas    > 0 ? C_GAS : "#d1d5db" }}>{fmtDM(a.gas)}</td>
+                            <td style={{ ...td("right"), color: a.diesel > 0 ? C_DIESEL : "#d1d5db" }}>{fmtDM(a.diesel)}</td>
+                            {showKero && <td style={{ ...td("right"), color: a.kero > 0 ? C_KERO : "#d1d5db" }}>{fmtDM(a.kero)}</td>}
+                            <td style={{ ...td("right"), fontWeight: 700 }}>{fmtDM(a.total)}</td>
+                            <td style={{ ...td("right"), color: "#374151" }}>{fmtDM(a.gasInv)}</td>
+                            <td style={{ ...td("right"), color: "#374151" }}>{fmtDM(a.dieselInv)}</td>
+                            {showKero && <td style={{ ...td("right"), color: "#374151" }}>{fmtDM(a.keroInv)}</td>}
+                            <td style={{ ...td("right"), fontWeight: 700, color: daysColor(a.gasDays) }}>{fmtDays(a.gasDays)}</td>
+                            <td style={{ ...td("right"), fontWeight: 700, color: daysColor(a.dieselDays) }}>{fmtDays(a.dieselDays)}</td>
+                            {showKero && <td style={{ ...td("right"), fontWeight: 700, color: daysColor(a.keroDays) }}>{fmtDays(a.keroDays)}</td>}
+                            <td style={{ ...td("right"), color: a.free > 0 ? "#374151" : "#d1d5db" }}>{fmtCnt(a.free)}</td>
+                            <td style={{ ...td("right"), color: a.paid > 0 ? "#374151" : "#d1d5db" }}>{fmtCnt(a.paid)}</td>
+                            <td style={{ ...td("right"), color: C_WASH }}>{fmtKW(a.washAmt)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: "#f0f4ff", borderTop: "2px solid #c7d7f5" }}>
+                        <td style={{ ...td("left"), fontWeight: 700 }} colSpan={2}>합계</td>
+                        <td style={{ ...td("right"), fontWeight: 700, color: C_GAS }}>{fmtDM(grand.gas)}</td>
+                        <td style={{ ...td("right"), fontWeight: 700, color: C_DIESEL }}>{fmtDM(grand.diesel)}</td>
+                        {showKero && <td style={{ ...td("right"), fontWeight: 700, color: C_KERO }}>{fmtDM(grand.kero)}</td>}
+                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtDM(grandTotal)}</td>
+                        {/* 재고·가용일수 합계는 의미가 없어 생략 */}
+                        <td colSpan={showKero ? 6 : 4} />
+                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtCnt(visibleAggs.reduce((s, a) => s + a.free, 0))}</td>
+                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtCnt(visibleAggs.reduce((s, a) => s + a.paid, 0))}</td>
+                        <td style={{ ...td("right"), fontWeight: 700, color: C_WASH }}>{fmtKW(grand.washAmt)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               )}
             </div>
           )}
 
-          {/* ── 상세: 개별 주유소 일별 내역 ── */}
+          {/* ── 상세: 개별 주유소 ── */}
           {selectedStation !== "전체" && (
             <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", overflow: "hidden" }}>
               <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -523,44 +609,38 @@ export default function RetailSalesReport() {
                   <button
                     onClick={() => setStation("전체")}
                     style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 16, padding: "0 4px", lineHeight: 1 }}
-                  >
-                    ←
-                  </button>
+                  >←</button>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{selectedStation}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", background: `${stColor}18`, color: stColor, borderRadius: 6 }}>{stInfo?.group}</span>
                 </div>
-                <div style={{ fontSize: 11, color: "#9ca3af" }}>판매량: L / 재고·세차: L·원</div>
+                <div style={{ fontSize: 11, color: "#9ca3af" }}>유류 DM · 세차매출 천원</div>
               </div>
 
-              {/* ── 재고 현황 & 가용일수 ── */}
-              {status && status.fuels.length > 0 && (
+              {/* 재고 현황 & 가용일수 */}
+              {visibleAggs[0] && (
                 <div style={{ padding: "16px 20px", borderBottom: "1px solid #f3f4f6", background: "#fbfcfe" }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 10 }}>
                     재고 현황 · 가용일수
                     <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>
-                      {status.date} 기준 · 최근 {status.n}일 평균 판매량
+                      {visibleAggs[0].latestDate} 기준 · 구간 일평균 판매량({visibleAggs[0].nDays}일)
                     </span>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-                    {status.fuels.map(f => (
-                      <div key={f.key} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+                    {[
+                      { label: "휘발유", color: C_GAS,    inv: visibleAggs[0].gasInv,    days: visibleAggs[0].gasDays },
+                      { label: "경유",   color: C_DIESEL, inv: visibleAggs[0].dieselInv, days: visibleAggs[0].dieselDays },
+                      ...(showKero || visibleAggs[0].keroInv > 0
+                        ? [{ label: "등유", color: C_KERO, inv: visibleAggs[0].keroInv, days: visibleAggs[0].keroDays }] : []),
+                    ].filter(f => f.inv > 0 || f.days != null).map(f => (
+                      <div key={f.label} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: f.color }}>{f.label}</span>
                           <span style={{ fontSize: 20, fontWeight: 800, color: daysColor(f.days) }}>
-                            {f.days == null ? "—" : f.days.toFixed(1)}
-                            <span style={{ fontSize: 11, fontWeight: 500, color: "#9ca3af", marginLeft: 2 }}>일</span>
+                            {fmtDays(f.days)}<span style={{ fontSize: 11, fontWeight: 500, color: "#9ca3af", marginLeft: 2 }}>일</span>
                           </span>
                         </div>
-                        <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.7 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span>전일재고</span><span style={{ color: "#374151" }}>{fmtL(f.prev)} L</span>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span>현재고</span><span style={{ color: "#111827", fontWeight: 700 }}>{fmtL(f.inv)} L</span>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span>7일 평균판매</span><span style={{ color: "#374151" }}>{fmtL(f.avg)} L/일</span>
-                          </div>
+                        <div style={{ fontSize: 11, color: "#6b7280", display: "flex", justifyContent: "space-between" }}>
+                          <span>현재고</span><span style={{ color: "#111827", fontWeight: 700 }}>{fmtDM(f.inv)} DM</span>
                         </div>
                       </div>
                     ))}
@@ -569,20 +649,22 @@ export default function RetailSalesReport() {
               )}
 
               {dailyRows.length === 0 ? (
-                <div style={{ padding: 40, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>해당 월에 데이터가 없습니다</div>
+                <div style={{ padding: 40, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>해당 구간에 데이터가 없습니다</div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead>
                       <tr style={{ background: "#f9fafb" }}>
                         <th style={th("left")}>날짜</th>
-                        <th style={{ ...th("right"), color: "#2563eb" }}>휘발유</th>
-                        <th style={{ ...th("right"), color: "#059669" }}>경유</th>
-                        <th style={{ ...th("right"), color: "#ea580c" }}>등유</th>
-                        <th style={{ ...th("right"), fontWeight: 700 }}>합계</th>
-                        <th style={{ ...th("right"), color: "#7c3aed" }}>세차(원)</th>
-                        <th style={{ ...th("right"), color: "#9ca3af" }}>재고휘(L)</th>
-                        <th style={{ ...th("right"), color: "#9ca3af" }}>재고경(L)</th>
+                        <th style={{ ...th("right"), color: C_GAS }}>무연</th>
+                        <th style={{ ...th("right"), color: C_DIESEL }}>경유</th>
+                        {showKero && <th style={{ ...th("right"), color: C_KERO }}>등유</th>}
+                        <th style={{ ...th("right"), fontWeight: 700 }}>판매계</th>
+                        <th style={{ ...th("right"), color: "#6b7280" }}>세차무료</th>
+                        <th style={{ ...th("right"), color: "#6b7280" }}>세차유료</th>
+                        <th style={{ ...th("right"), color: C_WASH }}>세차(천원)</th>
+                        <th style={{ ...th("right"), color: "#9ca3af" }}>재고무연</th>
+                        <th style={{ ...th("right"), color: "#9ca3af" }}>재고경유</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -591,25 +673,29 @@ export default function RetailSalesReport() {
                         return (
                           <tr key={r.date}>
                             <td style={{ ...td("left"), color: "#6b7280" }}>{r.date}</td>
-                            <td style={{ ...td("right"), color: r.gasoline_qty  > 0 ? "#2563eb" : "#d1d5db" }}>{fmtL(r.gasoline_qty)}</td>
-                            <td style={{ ...td("right"), color: r.diesel_qty    > 0 ? "#059669" : "#d1d5db" }}>{fmtL(r.diesel_qty)}</td>
-                            <td style={{ ...td("right"), color: r.kerosene_qty  > 0 ? "#ea580c" : "#d1d5db" }}>{fmtL(r.kerosene_qty)}</td>
-                            <td style={{ ...td("right"), fontWeight: 600 }}>{fmtL(rowTotal)}</td>
-                            <td style={{ ...td("right"), color: "#7c3aed" }}>{fmtW(r.car_wash_amount)}</td>
-                            <td style={{ ...td("right"), color: "#9ca3af", fontSize: 12 }}>{fmtL(r.gasoline_inv)}</td>
-                            <td style={{ ...td("right"), color: "#9ca3af", fontSize: 12 }}>{fmtL(r.diesel_inv)}</td>
+                            <td style={{ ...td("right"), color: r.gasoline_qty > 0 ? C_GAS : "#d1d5db" }}>{fmtDM(r.gasoline_qty)}</td>
+                            <td style={{ ...td("right"), color: r.diesel_qty   > 0 ? C_DIESEL : "#d1d5db" }}>{fmtDM(r.diesel_qty)}</td>
+                            {showKero && <td style={{ ...td("right"), color: r.kerosene_qty > 0 ? C_KERO : "#d1d5db" }}>{fmtDM(r.kerosene_qty)}</td>}
+                            <td style={{ ...td("right"), fontWeight: 600 }}>{fmtDM(rowTotal)}</td>
+                            <td style={{ ...td("right"), color: (r.car_wash_free || 0) > 0 ? "#374151" : "#d1d5db" }}>{fmtCnt(r.car_wash_free)}</td>
+                            <td style={{ ...td("right"), color: (r.car_wash_paid || 0) > 0 ? "#374151" : "#d1d5db" }}>{fmtCnt(r.car_wash_paid)}</td>
+                            <td style={{ ...td("right"), color: C_WASH }}>{fmtKW(r.car_wash_amount)}</td>
+                            <td style={{ ...td("right"), color: "#9ca3af", fontSize: 12 }}>{fmtDM(r.gasoline_inv)}</td>
+                            <td style={{ ...td("right"), color: "#9ca3af", fontSize: 12 }}>{fmtDM(r.diesel_inv)}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                     <tfoot>
                       <tr style={{ background: "#f0f4ff", borderTop: "2px solid #c7d7f5" }}>
-                        <td style={{ ...td("left"), fontWeight: 700 }}>합계</td>
-                        <td style={{ ...td("right"), fontWeight: 700, color: "#2563eb" }}>{fmtL(totals.gas)}</td>
-                        <td style={{ ...td("right"), fontWeight: 700, color: "#059669" }}>{fmtL(totals.diesel)}</td>
-                        <td style={{ ...td("right"), fontWeight: 700, color: "#ea580c" }}>{fmtL(totals.kero)}</td>
-                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtL(grandQty)}</td>
-                        <td style={{ ...td("right"), fontWeight: 700, color: "#7c3aed" }}>{fmtW(totals.carwash)}</td>
+                        <td style={{ ...td("left"), fontWeight: 700 }}>{modeLabel}</td>
+                        <td style={{ ...td("right"), fontWeight: 700, color: C_GAS }}>{fmtDM(grand.gas)}</td>
+                        <td style={{ ...td("right"), fontWeight: 700, color: C_DIESEL }}>{fmtDM(grand.diesel)}</td>
+                        {showKero && <td style={{ ...td("right"), fontWeight: 700, color: C_KERO }}>{fmtDM(grand.kero)}</td>}
+                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtDM(grandTotal)}</td>
+                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtCnt(visibleAggs[0]?.free || 0)}</td>
+                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtCnt(visibleAggs[0]?.paid || 0)}</td>
+                        <td style={{ ...td("right"), fontWeight: 700, color: C_WASH }}>{fmtKW(grand.washAmt)}</td>
                         <td colSpan={2} />
                       </tr>
                     </tfoot>
@@ -626,31 +712,38 @@ export default function RetailSalesReport() {
 
 // ── 스타일 헬퍼 ──────────────────────────────────────────────────
 const th = (align) => ({
-  padding: "10px 14px",
-  textAlign: align,
-  fontWeight: 600,
-  color: "#374151",
-  fontSize: 12,
+  padding: "10px 14px", textAlign: align, fontWeight: 600, color: "#374151",
+  fontSize: 12, borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap",
+});
+// 그룹 헤더 (상단)
+const gh = (align, bordered, bg) => ({
+  padding: "8px 12px", textAlign: align, fontWeight: 700, color: "#374151",
+  fontSize: 12, background: bg || "#f9fafb",
   borderBottom: "1px solid #e5e7eb",
-  whiteSpace: "nowrap",
+  borderLeft: bordered ? "1px solid #eef0f3" : undefined,
+  whiteSpace: "nowrap", verticalAlign: "middle",
 });
-
+// 서브 헤더 (하단, 유종)
+const sh = (color) => ({
+  padding: "7px 12px", textAlign: "right", fontWeight: 600, color,
+  fontSize: 11, background: "#f9fafb", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap",
+});
 const td = (align) => ({
-  padding: "10px 14px",
-  textAlign: align,
-  borderBottom: "1px solid #f3f4f6",
-  color: "#374151",
-  whiteSpace: "nowrap",
+  padding: "9px 12px", textAlign: align, borderBottom: "1px solid #f3f4f6",
+  color: "#374151", whiteSpace: "nowrap",
 });
-
 const chipStyle = (active) => ({
-  padding: "6px 12px",
-  borderRadius: 8,
-  border: "none",
-  fontSize: 12,
-  cursor: "pointer",
-  fontWeight: 600,
-  background: active ? "#2563eb" : "#f3f4f6",
-  color: active ? "#fff" : "#6b7280",
+  padding: "6px 12px", borderRadius: 8, border: "none", fontSize: 12, cursor: "pointer",
+  fontWeight: 600, background: active ? "#2563eb" : "#f3f4f6", color: active ? "#fff" : "#6b7280",
   transition: "all 0.15s",
 });
+const toggleBtn = (active) => ({
+  padding: "7px 14px", borderRadius: 8, fontSize: 12, cursor: "pointer", fontWeight: 700,
+  border: `1.5px solid ${active ? "#2563eb" : "#e5e7eb"}`,
+  background: active ? "#2563eb" : "#fff", color: active ? "#fff" : "#6b7280",
+  transition: "all 0.15s",
+});
+const dateInput = {
+  fontSize: 12, padding: "7px 8px", border: "1.5px solid #e5e7eb",
+  borderRadius: 8, background: "#fff", color: "#111827",
+};
