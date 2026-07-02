@@ -22,15 +22,29 @@ const supaHeaders = {
 // gasoline_inv, diesel_inv, kerosene_inv,
 // created_at, updated_at
 
+// aliases: 파일 자동 분류용 키워드 (파일 내 주유소명 + 파일명에서 탐색). 서로 겹치지 않게 유지
 const STATIONS = [
-  { name: "통일로일품주유소", group: "세영TMS"  },
-  { name: "남부순환로주유소", group: "세영TMS"  },
-  { name: "용인1주유소",      group: "엘앤케이" },
-  { name: "김포2주유소",      group: "엘앤케이" },
-  { name: "박달주유소",       group: "세일직영" },
-  { name: "안양주유소",       group: "세일직영" },
-  { name: "광교주유소",       group: "세일직영" },
+  { name: "통일로일품주유소", group: "세영TMS",  aliases: ["일품"] },
+  { name: "남부순환로주유소", group: "세영TMS",  aliases: ["남부순환"] },
+  { name: "용인1주유소",      group: "엘앤케이", aliases: ["용인"] },
+  { name: "김포2주유소",      group: "엘앤케이", aliases: ["김포"] },
+  { name: "박달주유소",       group: "세일직영", aliases: ["박달"] },
+  { name: "안양주유소",       group: "세일직영", aliases: ["안양"] },
+  { name: "광교주유소",       group: "세일직영", aliases: ["광교"] },
 ];
+
+// 워크북 + 파일명으로 주유소 자동 판별. 정확히 1곳만 매칭될 때만 반환(모호하면 null → 수동 지정)
+function detectStation(workbook, filename) {
+  let inFileName = "";
+  try {
+    const sheet = workbook.Sheets[workbook.SheetNames.includes("마감장") ? "마감장" : workbook.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+    inFileName = String(raw[1]?.[3] ?? ""); // 마감장 r1 col3 = 주유소명
+  } catch { /* 무시 */ }
+  const hay = `${inFileName} ${filename}`.replace(/\s/g, "");
+  const matches = STATIONS.filter(s => s.aliases.some(a => hay.includes(a)));
+  return matches.length === 1 ? matches[0] : null;
+}
 
 const GROUP_COLORS = {
   "세일직영": "#2563eb",
@@ -204,9 +218,8 @@ export default function RetailSalesReport() {
   const [dateTo,         setDateTo]        = useState("");
   const [avgMode,        setAvgMode]       = useState(false);   // false=합계, true=일평균
   const [showKero,       setShowKero]      = useState(false);   // 등유 컬럼 표시
-  const [uploadStation,  setUploadStation] = useState(STATIONS[0].name);
-  const [dzState,        setDzState]       = useState("idle");
-  const [dzInfo,         setDzInfo]        = useState(null);
+  const [processing,     setProcessing]    = useState(false);
+  const [results,        setResults]       = useState([]);
   const [drag,           setDrag]          = useState(false);
 
   const setMonthRange = useCallback((ym) => {
@@ -236,28 +249,52 @@ export default function RetailSalesReport() {
 
   useEffect(() => { reload(); }, [reload]);
 
-  const handleFile = useCallback(async (file) => {
-    setDzState("loading");
-    const reader = new FileReader();
-    reader.onload = async (e) => {
+  // 여러 파일을 한 번에 받아 주유소 자동 분류 후 업로드
+  const handleFiles = useCallback(async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    setProcessing(true);
+    const res = [];
+    let lastDate = null;
+    for (const file of files) {
       try {
-        const wb = XLSX.read(e.target.result, { type: "array", cellDates: false });
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array", cellDates: false });
         const parsed = parseMagamReport(wb);
-        const stInfo = STATIONS.find(s => s.name === uploadStation);
-        await supaUpsert(uploadStation, stInfo?.group || "", parsed);
-        await reload();
-        setDzInfo({ filename: file.name, date: parsed.dateStr, station: uploadStation });
-        setDzState("done");
-        setStation(uploadStation);
-        setMonthRange(parsed.dateStr.substring(0, 7));
+        const st = detectStation(wb, file.name);
+        if (st) {
+          await supaUpsert(st.name, st.group, parsed);
+          res.push({ filename: file.name, station: st.name, date: parsed.dateStr, status: "done" });
+          lastDate = parsed.dateStr;
+        } else {
+          // 자동 인식 실패 → 수동 지정용으로 파싱 결과 보관
+          res.push({ filename: file.name, date: parsed.dateStr, status: "manual", parsed });
+        }
       } catch (err) {
         console.error(err);
-        setDzInfo({ error: err.message });
-        setDzState("error");
+        res.push({ filename: file.name, status: "error", error: err.message });
       }
-    };
-    reader.readAsArrayBuffer(file);
-  }, [uploadStation, reload, setMonthRange]);
+    }
+    setResults(res);
+    setProcessing(false);
+    await reload();
+    if (lastDate) { setStation("전체"); setMonthRange(lastDate.substring(0, 7)); }
+  }, [reload, setMonthRange]);
+
+  // 자동 인식 실패 파일을 수동으로 주유소 지정 후 업로드
+  const assignManual = useCallback(async (idx, stationName) => {
+    const st = STATIONS.find(s => s.name === stationName);
+    const item = results[idx];
+    if (!st || !item?.parsed) return;
+    try {
+      await supaUpsert(st.name, st.group, item.parsed);
+      setResults(rs => rs.map((r, i) => i === idx ? { filename: r.filename, station: st.name, date: r.date, status: "done" } : r));
+      await reload();
+      setMonthRange(item.date.substring(0, 7));
+    } catch (err) {
+      setResults(rs => rs.map((r, i) => i === idx ? { ...r, status: "error", error: err.message } : r));
+    }
+  }, [results, reload, setMonthRange]);
 
   // ── 구간 필터 ──────────────────────────────────────────────────
   const rangeRows = rows.filter(r => r.date && r.date >= dateFrom && r.date <= dateTo);
@@ -331,77 +368,71 @@ export default function RetailSalesReport() {
   return (
     <div style={{ paddingBottom: 40 }}>
 
-      {/* ── 업로드 섹션 ── */}
+      {/* ── 업로드 섹션 (여러 파일 자동 분류) ── */}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>업로드 주유소</span>
-          <select
-            value={uploadStation}
-            onChange={e => setUploadStation(e.target.value)}
-            style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13, color: "#111827", background: "#fff", cursor: "pointer" }}
-          >
-            {["세일직영", "엘앤케이", "세영TMS"].map(grp => (
-              <optgroup key={grp} label={grp}>
-                {STATIONS.filter(s => s.group === grp).map(s => (
-                  <option key={s.name} value={s.name}>{s.name}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          {dzState === "done" && (
-            <button
-              onClick={() => { setDzState("idle"); setDzInfo(null); }}
-              style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 12, color: "#6b7280", background: "#fff", cursor: "pointer" }}
-            >
-              + 추가 업로드
-            </button>
-          )}
-        </div>
-
         <div
           onDragOver={e => { e.preventDefault(); setDrag(true); }}
           onDragLeave={() => setDrag(false)}
-          onDrop={e => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-          onClick={() => dzState !== "loading" && document.getElementById("retail-magam-input").click()}
+          onDrop={e => { e.preventDefault(); setDrag(false); handleFiles(e.dataTransfer.files); }}
+          onClick={() => !processing && document.getElementById("retail-magam-input").click()}
           style={{
-            border: `2px dashed ${drag ? "#2563eb" : dzState === "done" ? "#16a34a" : dzState === "error" ? "#ef4444" : "#d1d5db"}`,
-            borderRadius: 12,
-            padding: "18px 24px",
-            textAlign: "center",
-            cursor: dzState === "loading" ? "default" : "pointer",
-            background: dzState === "done" ? "rgba(22,163,74,0.04)" : drag ? "rgba(37,99,235,0.04)" : "#fafafa",
-            transition: "all 0.2s",
+            border: `2px dashed ${drag ? "#2563eb" : "#d1d5db"}`,
+            borderRadius: 12, padding: "18px 24px", textAlign: "center",
+            cursor: processing ? "default" : "pointer",
+            background: drag ? "rgba(37,99,235,0.04)" : "#fafafa", transition: "all 0.2s",
           }}
         >
-          {dzState === "loading" && <div style={{ color: "#9ca3af", fontSize: 13 }}>파싱 중...</div>}
-          {dzState === "error" && (
-            <div>
-              <div style={{ color: "#ef4444", fontSize: 13, marginBottom: 4 }}>파일 파싱 실패</div>
-              <div style={{ color: "#9ca3af", fontSize: 11 }}>{dzInfo?.error || "마감일보 형식을 확인하세요"}</div>
-              <div style={{ color: "#9ca3af", fontSize: 11, marginTop: 4 }}>클릭하여 다시 시도</div>
-            </div>
-          )}
-          {dzState === "done" && dzInfo && (
-            <div style={{ color: "#16a34a", fontSize: 13 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>✓ {dzInfo.filename}</div>
-              <div>{dzInfo.station} · {dzInfo.date} 업로드 완료</div>
-            </div>
-          )}
-          {dzState === "idle" && (
+          {processing ? (
+            <div style={{ color: "#9ca3af", fontSize: 13 }}>파싱 중...</div>
+          ) : (
             <>
               <div style={{ fontSize: 22, marginBottom: 6 }}>📂</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>마감일보 파일 드롭 또는 클릭</div>
-              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>.xls / .xlsx / .xlsm</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>마감일보 파일을 한 번에 드롭 또는 클릭 (여러 개 동시 가능)</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>주유소는 파일에서 자동 인식 · .xls / .xlsx / .xlsm</div>
             </>
           )}
           <input
             id="retail-magam-input"
             type="file"
             accept=".csv,.xls,.xlsx,.xlsm"
+            multiple
             style={{ display: "none" }}
-            onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ""; }}
+            onChange={e => { handleFiles(e.target.files); e.target.value = ""; }}
           />
         </div>
+
+        {/* 업로드 결과 목록 */}
+        {results.length > 0 && (
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+            {results.map((r, i) => (
+              <div key={i} style={{
+                display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                padding: "8px 12px", borderRadius: 8, fontSize: 12,
+                background: r.status === "done" ? "rgba(22,163,74,0.06)" : r.status === "error" ? "rgba(239,68,68,0.06)" : "#fff7ed",
+                border: `1px solid ${r.status === "done" ? "#bbf7d0" : r.status === "error" ? "#fecaca" : "#fed7aa"}`,
+              }}>
+                <span style={{ fontSize: 13 }}>{r.status === "done" ? "✓" : r.status === "error" ? "✕" : "?"}</span>
+                <span style={{ fontWeight: 600, color: "#374151" }}>{r.filename}</span>
+                {r.status === "done" && <span style={{ color: "#16a34a" }}>{r.station} · {r.date} 완료</span>}
+                {r.status === "error" && <span style={{ color: "#ef4444" }}>{r.error}</span>}
+                {r.status === "manual" && (
+                  <>
+                    <span style={{ color: "#c2410c" }}>주유소 자동 인식 실패 — 직접 선택:</span>
+                    <select defaultValue="" onChange={e => e.target.value && assignManual(i, e.target.value)}
+                      style={{ padding: "4px 8px", borderRadius: 6, border: "1.5px solid #e5e7eb", fontSize: 12, background: "#fff" }}>
+                      <option value="" disabled>주유소 선택</option>
+                      {STATIONS.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                    </select>
+                  </>
+                )}
+              </div>
+            ))}
+            <button onClick={() => setResults([])}
+              style={{ alignSelf: "flex-start", marginTop: 2, padding: "4px 10px", fontSize: 11, color: "#6b7280", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+              결과 지우기
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── 테이블 미생성 안내 ── */}
