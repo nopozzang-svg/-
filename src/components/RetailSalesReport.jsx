@@ -1,705 +1,527 @@
 // ============================================================
 //  RetailSalesReport.jsx  –  직영·관계사 주유소 소매 판매 리포트
-//  엑셀(마감일보) 업로드 → 파싱 → Supabase 저장 → 대시보드 표시
+//  ERP 매출자료등록(매출거래상세) 파일 업로드 → 주유소별 판매량 집계
 // ============================================================
 
 import { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line, Legend,
-} from "recharts";
 
 const SUPABASE_URL = "https://ozxjyzhndrgyvtewlkac.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im96eGp5emhuZHJneXZ0ZXdsa2FjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5OTgyNjcsImV4cCI6MjA4NzU3NDI2N30.ESPSK3MZeXMf5gK6ajT0eeNedqxiuniS3zRFbuyzPu4";
-const TABLE = "daily_station_report";
-
-const SUPA_HEADERS = {
+const supaHeaders = {
   apikey: SUPABASE_ANON_KEY,
   Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
   "Content-Type": "application/json",
-  Prefer: "resolution=merge-duplicates,return=minimal",
 };
 
-// ── 사업장 설정 ─────────────────────────────────────────────
-const STATIONS = [
-  { name: "박달주유소",       group: "세일직영" },
-  { name: "안양주유소",       group: "세일직영" },
-  { name: "광교주유소",       group: "세일직영" },
-  { name: "용인1주유소",      group: "엘앤케이" },
-  { name: "김포2주유소",      group: "엘앤케이" },
-  { name: "통일로일품주유소", group: "세영TMS" },
-  { name: "남부순환로주유소", group: "세영TMS" },
+// ── 유종 코드 ────────────────────────────────────────────────
+const YUJONG_MAP = {
+  "휘발유":         "G",
+  "고급휘발유":     "PG",
+  "경유":           "D",
+  "화물차우대":     "D",
+  "공공조달(경유)": "D",
+  "등유":           "K",
+};
+
+const YJ_COLS = ["PG", "G", "D", "K"];
+const YJ_LABELS = { PG: "고급휘발유", G: "휘발유", D: "경유", K: "등유" };
+const YJ_COLORS = { PG: "#7c3aed", G: "#2563eb", D: "#059669", K: "#ea580c" };
+
+// ── 관계사 주유소 키워드 매핑 ────────────────────────────────
+const RETAIL_STATIONS = [
+  { keywords: ["세영tms 통일로", "통일로일품"],          name: "통일로일품주유소", group: "세영TMS"   },
+  { keywords: ["엘엔케이토탈 용인", "용인제1주유소"],     name: "용인1주유소",     group: "엘앤케이"  },
+  { keywords: ["김포제2주유소"],                         name: "김포2주유소",     group: "엘앤케이"  },
+  { keywords: ["세일온산주유소", "온산주유소(계열)"],     name: "온산주유소",      group: "세일계열"  },
+  { keywords: ["남부순환로주유소"],                       name: "남부순환로주유소", group: "세영TMS"  },
+  { keywords: ["박달주유소"],                            name: "박달주유소",      group: "세일직영"  },
+  { keywords: ["안양주유소"],                            name: "안양주유소",      group: "세일직영"  },
+  { keywords: ["광교주유소"],                            name: "광교주유소",      group: "세일직영"  },
 ];
 
-const GROUP_COLOR = {
+const GROUP_COLORS = {
   "세일직영": "#2563eb",
-  "엘앤케이": "#059669",
-  "세영TMS":  "#d97706",
+  "엘앤케이":  "#059669",
+  "세영TMS":   "#d97706",
+  "세일계열":  "#7c3aed",
 };
 
-// ── 마감일보 파싱 ────────────────────────────────────────────
-function parseReport(workbook) {
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-
-  const cleanNum = (val) => {
-    if (val === null || val === undefined || val === "" || val === " - ") return 0;
-    const n = parseInt(String(val).replace(/[^0-9]/g, ""), 10);
-    return isNaN(n) ? 0 : n;
-  };
-
-  // 날짜: 행3(0-indexed), 예) "마감일자 :20" | "" | "" | "26" | "년" | "7" | "월" | "1" | "일"
-  const dr = raw[3] || [];
-  const yearSuffix = String(dr[3] || "").trim();
-  const month      = String(dr[5] || "").trim();
-  const day        = String(dr[7] || "").trim();
-  const date = yearSuffix && month && day
-    ? `20${yearSuffix}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
-    : null;
-
-  // 판매현황 (0-indexed 행 39~42)
-  const gasRow = raw[39] || [];  // 무연
-  const dieRow = raw[40] || [];  // 경유
-  const kerRow = raw[41] || [];  // 등유
-  const totRow = raw[42] || [];  // 계
-
-  // 재고 (0-indexed 행 8, 21, 33)
-  const gasInvRow = raw[8]  || [];  // 무연
-  const dieInvRow = raw[21] || [];  // 경유
-  const kerInvRow = raw[33] || [];  // 등유
-
-  // 세차 (0-indexed 행 61, 63)
-  const cwRow    = raw[61] || [];  // 유료세차 대수 (소형 col3 / 대형 col7)
-  const cwAmtRow = raw[63] || [];  // 세차 금액 (col3)
-
-  const small = cleanNum(cwRow[3]);
-  const large = cleanNum(cwRow[7]);
-
-  return {
-    date,
-    gasoline_qty:    cleanNum(gasRow[15]),
-    diesel_qty:      cleanNum(dieRow[15]),
-    kerosene_qty:    cleanNum(kerRow[15]),
-    total_qty:       cleanNum(totRow[15]),
-    gasoline_amount: cleanNum(gasRow[18]),
-    diesel_amount:   cleanNum(dieRow[18]),
-    total_amount:    cleanNum(totRow[18]),
-    gasoline_inv:    cleanNum(gasInvRow[24]),
-    diesel_inv:      cleanNum(dieInvRow[24]),
-    kerosene_inv:    cleanNum(kerInvRow[24]),
-    car_wash_small:  small,
-    car_wash_large:  large,
-    car_wash_total:  small + large,
-    car_wash_amount: cleanNum(cwAmtRow[3]),
-  };
+function matchStation(maechulName) {
+  const s = (maechulName || "").toLowerCase();
+  return RETAIL_STATIONS.find(st => st.keywords.some(k => s.includes(k))) || null;
 }
 
-// ── 유틸 ────────────────────────────────────────────────────
-const fmt = (n) => (n ? n.toLocaleString() : "0");
-const fmtM = (n) => (n ? Math.round(n / 1000).toLocaleString() : "0");
+// ── ERP 매출거래상세 파싱 ────────────────────────────────────
+// 형식: row0=제목, row2=기간, row3=지점, row5=헤더, row6+=데이터
+// col[0]=거래일자, col[7]=매출처, col[13]=거래유종, col[16]=거래수량
+function parseERPFile(workbook) {
+  const ws = workbook.Sheets[workbook.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
-const getMonthStr = (offset = 0) => {
+  const records = [];
+  for (let i = 6; i < raw.length; i++) {
+    const row = raw[i];
+    const dateVal = row[0];
+    const maechul = String(row[7] || "").trim();
+    const yujong  = String(row[13] || "").trim();
+    const qty     = parseFloat(row[16]) || 0;
+
+    if (!dateVal || qty <= 0) continue;
+
+    const yj = YUJONG_MAP[yujong];
+    if (!yj) continue;
+
+    const stMatch = matchStation(maechul);
+    if (!stMatch) continue;
+
+    let ds;
+    if (typeof dateVal === "string")       ds = dateVal.substring(0, 10);
+    else if (typeof dateVal === "number")  ds = new Date(Math.round((dateVal - 25569) * 86400 * 1000)).toISOString().substring(0, 10);
+    else                                   ds = String(dateVal).substring(0, 10);
+
+    records.push({ date: ds, station: stMatch.name, group: stMatch.group, yj, qty });
+  }
+  return records;
+}
+
+// ── Supabase helpers (sales_current 테이블, jiyeok="retail") ─
+const SUPA_JIYEOK = "retail";
+
+async function supaGetRecords() {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/sales_current?jiyeok=eq.${SUPA_JIYEOK}&select=records`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+    );
+    if (!res.ok) return [];
+    const rows = await res.json();
+    return rows.flatMap(r => r.records || []);
+  } catch { return []; }
+}
+
+async function supaUpsertRecords(newRecords) {
+  const existing = await supaGetRecords();
+  const dates = newRecords.map(r => r.date).filter(Boolean).sort();
+  if (!dates.length) return;
+  const minDate = dates[0];
+  const maxDate = dates[dates.length - 1];
+  // 업로드 날짜 범위만 교체, 나머지 보존
+  const preserved = existing.filter(r => r.date < minDate || r.date > maxDate);
+  const merged = [...preserved, ...newRecords];
+
+  await fetch(`${SUPABASE_URL}/rest/v1/sales_current`, {
+    method: "POST",
+    headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify({ jiyeok: SUPA_JIYEOK, records: merged, updated_at: new Date().toISOString() }),
+  });
+}
+
+// ── 유틸 ──────────────────────────────────────────────────────
+const fmtKL = (v) => (v ? (v / 1000).toFixed(1) : "-");
+const fmtL  = (v) => (v ? Math.round(v).toLocaleString() : "-");
+
+function getMonthStr(offset = 0) {
   const d = new Date();
   d.setMonth(d.getMonth() + offset);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-};
-
-// ── Supabase helpers ─────────────────────────────────────────
-async function fetchRecords(monthStr) {
-  const start = `${monthStr}-01`;
-  const [year, mon] = monthStr.split("-").map(Number);
-  const lastDay = new Date(year, mon, 0).getDate();
-  const end = `${monthStr}-${String(lastDay).padStart(2, "0")}`;
-  const url = `${SUPABASE_URL}/rest/v1/${TABLE}?date=gte.${start}&date=lte.${end}&order=date.asc,station_name.asc`;
-  const res = await fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
-async function upsertRecord(record) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
-    method: "POST",
-    headers: SUPA_HEADERS,
-    body: JSON.stringify(record),
-  });
-  if (!res.ok) throw new Error(await res.text());
-}
+// ── 메인 컴포넌트 ────────────────────────────────────────────
+export default function RetailSalesReport() {
+  const [records, setRecords]       = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [selectedStation, setStation] = useState("전체");
+  const [selectedMonth, setMonth]   = useState(getMonthStr(0));
+  const [dzState, setDzState]       = useState("idle"); // idle | loading | done | error
+  const [dzInfo, setDzInfo]         = useState(null);
+  const [drag, setDrag]             = useState(false);
 
-// ── 가용재고 일수 계산 ───────────────────────────────────────
-// records: 해당 사업장의 최근 데이터, latest: 최신 레코드
-function calcDaysRemaining(records, stationName, fuelKey, invKey) {
-  const stRecs = records
-    .filter((r) => r.station_name === stationName && r[fuelKey] > 0)
-    .slice(-7);
-  if (!stRecs.length) return null;
-  const avgSales = stRecs.reduce((s, r) => s + r[fuelKey], 0) / stRecs.length;
-  const latest = stRecs[stRecs.length - 1];
-  if (!avgSales || !latest[invKey]) return null;
-  return Math.round(latest[invKey] / avgSales);
-}
+  // 초기 로드
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const data = await supaGetRecords();
+      setRecords(data);
+      if (data.length) {
+        const months = [...new Set(data.map(r => r.date?.substring(0, 7)).filter(Boolean))].sort();
+        setMonth(months[months.length - 1]);
+      }
+      setLoading(false);
+    })();
+  }, []);
 
-// ── 서브 컴포넌트 ────────────────────────────────────────────
-
-function StationCard({ station, latestRec, allRecs, onUpload }) {
-  const color = GROUP_COLOR[station.group] || "#6b7280";
-
-  if (!latestRec) {
-    return (
-      <div style={cardStyle(color, 0.04)}>
-        <div style={cardHeader(color)}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: "#111827" }}>{station.name}</div>
-            <div style={{ fontSize: 11, color, marginTop: 2, fontWeight: 600 }}>{station.group}</div>
-          </div>
-          <button
-            onClick={() => onUpload(station.name)}
-            style={uploadBtnStyle(color)}
-          >
-            업로드
-          </button>
-        </div>
-        <div style={{ padding: "20px 16px", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
-          데이터 없음
-        </div>
-      </div>
-    );
-  }
-
-  const gasDays = calcDaysRemaining(allRecs, station.name, "gasoline_qty", "gasoline_inv");
-  const dieDays = calcDaysRemaining(allRecs, station.name, "diesel_qty", "diesel_inv");
-
-  return (
-    <div style={cardStyle(color, 0.04)}>
-      <div style={cardHeader(color)}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 15, color: "#111827" }}>{station.name}</div>
-          <div style={{ fontSize: 11, color, marginTop: 2, fontWeight: 600 }}>{station.group}</div>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 10, color: "#9ca3af" }}>{latestRec.date}</div>
-          <button onClick={() => onUpload(station.name)} style={uploadBtnStyle(color)}>
-            업로드
-          </button>
-        </div>
-      </div>
-
-      {/* 판매량 */}
-      <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6" }}>
-        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 8, fontWeight: 600 }}>일 판매량 (L)</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          <Metric label="휘발유" value={fmt(latestRec.gasoline_qty)} color="#2563eb" />
-          <Metric label="경유"   value={fmt(latestRec.diesel_qty)}   color="#059669" />
-          <Metric label="합계"   value={fmt(latestRec.total_qty)}    color="#111827" bold />
-        </div>
-      </div>
-
-      {/* 재고 & 가용일수 */}
-      <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6" }}>
-        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 8, fontWeight: 600 }}>재고 (L) / 가용일수</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <InvMetric label="휘발유" inv={latestRec.gasoline_inv} days={gasDays} />
-          <InvMetric label="경유"   inv={latestRec.diesel_inv}   days={dieDays} />
-        </div>
-      </div>
-
-      {/* 세차 */}
-      <div style={{ padding: "12px 16px" }}>
-        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 8, fontWeight: 600 }}>세차</div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontSize: 13, color: "#374151" }}>
-            <span style={{ fontWeight: 700, color: "#111827" }}>{latestRec.car_wash_total}</span>
-            <span style={{ color: "#9ca3af", fontSize: 11 }}> 대</span>
-            <span style={{ color: "#d1d5db", margin: "0 6px" }}>|</span>
-            <span style={{ fontSize: 11, color: "#6b7280" }}>소형 {latestRec.car_wash_small} · 대형 {latestRec.car_wash_large}</span>
-          </div>
-          <div style={{ fontSize: 13, color: "#374151", fontFamily: "'JetBrains Mono', monospace" }}>
-            {fmt(latestRec.car_wash_amount)}
-            <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 2 }}>원</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const Metric = ({ label, value, color, bold }) => (
-  <div style={{ textAlign: "center" }}>
-    <div style={{ fontSize: 10, color: "#9ca3af" }}>{label}</div>
-    <div style={{ fontSize: 15, fontWeight: bold ? 700 : 600, color: color || "#374151", fontFamily: "'JetBrains Mono', monospace" }}>
-      {value}
-    </div>
-  </div>
-);
-
-const InvMetric = ({ label, inv, days }) => (
-  <div>
-    <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 2 }}>{label}</div>
-    <div style={{ fontSize: 14, fontWeight: 600, color: "#374151", fontFamily: "'JetBrains Mono', monospace" }}>
-      {fmt(inv)}
-      <span style={{ fontSize: 9, color: "#9ca3af", marginLeft: 2 }}>L</span>
-    </div>
-    {days !== null && (
-      <div style={{
-        fontSize: 11, fontWeight: 700,
-        color: days <= 3 ? "#ef4444" : days <= 7 ? "#f59e0b" : "#16a34a",
-        marginTop: 2,
-      }}>
-        약 {days}일치
-      </div>
-    )}
-  </div>
-);
-
-// ── 업로드 패널 ──────────────────────────────────────────────
-function UploadPanel({ initialStation, onSaved, onCancel }) {
-  const [station, setStation]   = useState(initialStation || "");
-  const [preview, setPreview]   = useState(null);
-  const [error, setError]       = useState("");
-  const [saving, setSaving]     = useState(false);
-  const [dragging, setDragging] = useState(false);
-
-  const handleFile = useCallback((file) => {
-    if (!file) return;
-    setError("");
-    setPreview(null);
+  // 파일 처리
+  const handleFile = useCallback(async (file) => {
+    setDzState("loading");
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        const wb = XLSX.read(e.target.result, { type: "array" });
-        const parsed = parseReport(wb);
-        if (!parsed.date) {
-          setError("날짜를 파싱할 수 없습니다. 마감일보 형식을 확인해 주세요.");
+        const wb = XLSX.read(e.target.result, { type: "array", cellDates: false });
+        const parsed = parseERPFile(wb);
+        if (!parsed.length) {
+          setDzState("error");
           return;
         }
-        setPreview(parsed);
+        await supaUpsertRecords(parsed);
+        const updated = await supaGetRecords();
+        setRecords(updated);
+        const dates = parsed.map(r => r.date).sort();
+        const stationSet = [...new Set(parsed.map(r => r.station))];
+        setDzInfo({
+          filename: file.name,
+          count:    parsed.length,
+          stations: stationSet.join(", "),
+          range:    `${dates[0]} ~ ${dates[dates.length - 1]}`,
+        });
+        setDzState("done");
+        setMonth(dates[dates.length - 1].substring(0, 7));
       } catch (err) {
-        setError(`파일 파싱 오류: ${err.message}`);
+        console.error(err);
+        setDzState("error");
       }
     };
     reader.readAsArrayBuffer(file);
   }, []);
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  };
+  // ── 필터 계산 ─────────────────────────────────────────────
+  const [yr, mo] = selectedMonth.split("-").map(Number);
+  const lastDay  = new Date(yr, mo, 0).getDate();
+  const start    = `${selectedMonth}-01`;
+  const end      = `${selectedMonth}-${String(lastDay).padStart(2, "0")}`;
 
-  const handleSave = async () => {
-    if (!station || !preview) return;
-    setSaving(true);
-    setError("");
-    try {
-      const st = STATIONS.find((s) => s.name === station);
-      await upsertRecord({
-        date:            preview.date,
-        station_name:    station,
-        station_group:   st?.group || "",
-        gasoline_qty:    preview.gasoline_qty,
-        diesel_qty:      preview.diesel_qty,
-        kerosene_qty:    preview.kerosene_qty,
-        total_qty:       preview.total_qty,
-        gasoline_amount: preview.gasoline_amount,
-        diesel_amount:   preview.diesel_amount,
-        total_amount:    preview.total_amount,
-        car_wash_small:  preview.car_wash_small,
-        car_wash_large:  preview.car_wash_large,
-        car_wash_total:  preview.car_wash_total,
-        car_wash_amount: preview.car_wash_amount,
-        gasoline_inv:    preview.gasoline_inv,
-        diesel_inv:      preview.diesel_inv,
-        kerosene_inv:    preview.kerosene_inv,
-      });
-      onSaved();
-    } catch (err) {
-      setError(`저장 오류: ${err.message}`);
-    }
-    setSaving(false);
-  };
+  const filtered = records.filter(r => {
+    if (!r.date || r.date < start || r.date > end) return false;
+    if (selectedStation !== "전체" && r.station !== selectedStation) return false;
+    return true;
+  });
 
-  return (
-    <div style={{ maxWidth: 680, margin: "0 auto" }}>
-      <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e5e7eb", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-        {/* 헤더 */}
-        <div style={{ padding: "20px 24px", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>마감일보 업로드</div>
-            <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>엑셀(.xlsx) 파일을 업로드하면 자동으로 데이터를 추출합니다</div>
-          </div>
-          <button onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 20, padding: 4 }}>✕</button>
-        </div>
+  const months = [...new Set(records.map(r => r.date?.substring(0, 7)).filter(Boolean))].sort();
 
-        <div style={{ padding: 24 }}>
-          {/* 사업장 선택 */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 8 }}>
-              사업장 선택
-            </label>
-            <select
-              value={station}
-              onChange={(e) => setStation(e.target.value)}
-              style={{
-                width: "100%", padding: "10px 14px", borderRadius: 10,
-                border: "1.5px solid #e5e7eb", fontSize: 14, color: "#111827",
-                background: "#fafafa", cursor: "pointer", outline: "none",
-                appearance: "none",
-              }}
-            >
-              <option value="">-- 사업장을 선택하세요 --</option>
-              {["세일직영", "엘앤케이", "세영TMS"].map((grp) => (
-                <optgroup key={grp} label={grp}>
-                  {STATIONS.filter((s) => s.group === grp).map((s) => (
-                    <option key={s.name} value={s.name}>{s.name}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </div>
+  // 총계
+  const totals = { PG: 0, G: 0, D: 0, K: 0 };
+  filtered.forEach(r => { totals[r.yj] = (totals[r.yj] || 0) + r.qty; });
+  const grandTotal = YJ_COLS.reduce((s, c) => s + (totals[c] || 0), 0);
 
-          {/* 파일 드롭존 */}
-          <div
-            onDrop={handleDrop}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            style={{
-              border: `2px dashed ${dragging ? "#2563eb" : "#d1d5db"}`,
-              borderRadius: 12, padding: "32px 24px", textAlign: "center",
-              background: dragging ? "rgba(37,99,235,0.04)" : "#fafafa",
-              transition: "all 0.2s", cursor: "pointer",
-              marginBottom: 20,
-            }}
-            onClick={() => document.getElementById("retail-file-input").click()}
-          >
-            <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#374151" }}>
-              엑셀 파일을 드래그하거나 클릭하여 선택
-            </div>
-            <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 4 }}>
-              .xlsx, .xls 형식 지원
-            </div>
-            <input
-              id="retail-file-input"
-              type="file"
-              accept=".xlsx,.xls"
-              style={{ display: "none" }}
-              onChange={(e) => handleFile(e.target.files[0])}
-            />
-          </div>
-
-          {/* 오류 */}
-          {error && (
-            <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "12px 16px", color: "#b91c1c", fontSize: 13, marginBottom: 16 }}>
-              {error}
-            </div>
-          )}
-
-          {/* 미리보기 */}
-          {preview && (
-            <div style={{ background: "rgba(37,99,235,0.04)", border: "1px solid rgba(37,99,235,0.15)", borderRadius: 12, padding: 20, marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#1e40af", marginBottom: 14 }}>
-                파싱 결과 확인 — {station || "사업장 미선택"} / {preview.date}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }}>
-                <PreviewItem label="휘발유 판매량" value={`${fmt(preview.gasoline_qty)} L`} />
-                <PreviewItem label="경유 판매량"   value={`${fmt(preview.diesel_qty)} L`} />
-                <PreviewItem label="합계 판매량"   value={`${fmt(preview.total_qty)} L`} />
-                <PreviewItem label="휘발유 매출"   value={`${fmt(preview.gasoline_amount)} 원`} />
-                <PreviewItem label="경유 매출"     value={`${fmt(preview.diesel_amount)} 원`} />
-                <PreviewItem label="합계 매출"     value={`${fmt(preview.total_amount)} 원`} />
-                <PreviewItem label="휘발유 재고"   value={`${fmt(preview.gasoline_inv)} L`} />
-                <PreviewItem label="경유 재고"     value={`${fmt(preview.diesel_inv)} L`} />
-                <PreviewItem label="등유 재고"     value={`${fmt(preview.kerosene_inv)} L`} />
-                <PreviewItem label="세차 소형"     value={`${preview.car_wash_small} 대`} />
-                <PreviewItem label="세차 대형"     value={`${preview.car_wash_large} 대`} />
-                <PreviewItem label="세차 금액"     value={`${fmt(preview.car_wash_amount)} 원`} />
-              </div>
-
-              {!station && (
-                <div style={{ color: "#f59e0b", fontSize: 12, marginBottom: 8 }}>⚠ 사업장을 먼저 선택해 주세요</div>
-              )}
-
-              <button
-                onClick={handleSave}
-                disabled={!station || saving}
-                style={{
-                  width: "100%", padding: "12px", borderRadius: 10, border: "none",
-                  background: station ? "#2563eb" : "#d1d5db",
-                  color: "#fff", fontWeight: 700, fontSize: 14, cursor: station ? "pointer" : "not-allowed",
-                  transition: "all 0.2s",
-                }}
-              >
-                {saving ? "저장 중..." : "Supabase에 저장"}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const PreviewItem = ({ label, value }) => (
-  <div>
-    <div style={{ fontSize: 10, color: "#9ca3af" }}>{label}</div>
-    <div style={{ fontSize: 13, fontWeight: 600, color: "#1e40af", fontFamily: "'JetBrains Mono', monospace" }}>{value}</div>
-  </div>
-);
-
-// ── 메인 컴포넌트 ────────────────────────────────────────────
-export default function RetailSalesReport() {
-  const [view, setView]             = useState("dashboard"); // "dashboard" | "upload"
-  const [uploadStation, setUpload]  = useState("");
-  const [selectedMonth, setMonth]   = useState(getMonthStr(0));
-  const [records, setRecords]       = useState([]);
-  const [loading, setLoading]       = useState(false);
-  const [loadError, setLoadError]   = useState("");
-  const [selectedGroup, setGroup]   = useState("전체");
-
-  const loadData = useCallback(async (month) => {
-    setLoading(true);
-    setLoadError("");
-    try {
-      const data = await fetchRecords(month);
-      setRecords(data);
-    } catch (e) {
-      setLoadError(e.message.includes("does not exist")
-        ? "테이블이 없습니다. Supabase에서 daily_station_report 테이블을 먼저 생성해 주세요."
-        : `데이터 조회 오류: ${e.message}`
-      );
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { loadData(selectedMonth); }, [selectedMonth, loadData]);
-
-  const handleUpload = (stationName) => {
-    setUpload(stationName);
-    setView("upload");
-  };
-
-  const handleSaved = () => {
-    setView("dashboard");
-    loadData(selectedMonth);
-  };
-
-  // 사업장별 최신 레코드 추출
-  const latestByStation = STATIONS.reduce((acc, s) => {
-    const recs = records.filter((r) => r.station_name === s.name);
-    acc[s.name] = recs.length ? recs[recs.length - 1] : null;
-    return acc;
-  }, {});
-
-  // 월 합계 (전체 or 그룹 필터)
-  const filteredStations = selectedGroup === "전체"
-    ? STATIONS
-    : STATIONS.filter((s) => s.group === selectedGroup);
-
-  const monthSummary = filteredStations.reduce(
-    (acc, s) => {
-      const recs = records.filter((r) => r.station_name === s.name);
-      recs.forEach((r) => {
-        acc.gasoline_qty    += r.gasoline_qty    || 0;
-        acc.diesel_qty      += r.diesel_qty      || 0;
-        acc.total_qty       += r.total_qty       || 0;
-        acc.total_amount    += r.total_amount    || 0;
-        acc.car_wash_total  += r.car_wash_total  || 0;
-        acc.car_wash_amount += r.car_wash_amount || 0;
-      });
-      return acc;
-    },
-    { gasoline_qty: 0, diesel_qty: 0, total_qty: 0, total_amount: 0, car_wash_total: 0, car_wash_amount: 0 }
-  );
-
-  // 일별 합계 차트 데이터 (전체 합산)
-  const dailyChartData = (() => {
-    const byDate = {};
-    records
-      .filter((r) => filteredStations.some((s) => s.name === r.station_name))
-      .forEach((r) => {
-        if (!byDate[r.date]) byDate[r.date] = { date: r.date.slice(8), gasoline: 0, diesel: 0, total: 0 };
-        byDate[r.date].gasoline += r.gasoline_qty || 0;
-        byDate[r.date].diesel   += r.diesel_qty   || 0;
-        byDate[r.date].total    += r.total_qty     || 0;
-      });
-    return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
-  })();
-
-  const tooltipStyle = {
-    background: "#fff", border: "1px solid #e5e7eb",
-    borderRadius: 8, fontSize: 12, color: "#111827",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-  };
-
-  if (view === "upload") {
-    return (
-      <div style={{ padding: "24px 0" }}>
-        <UploadPanel
-          initialStation={uploadStation}
-          onSaved={handleSaved}
-          onCancel={() => setView("dashboard")}
-        />
-      </div>
-    );
+  // 전체 뷰: 주유소별 집계
+  const stationTotals = {};
+  if (selectedStation === "전체") {
+    filtered.forEach(r => {
+      if (!stationTotals[r.station]) stationTotals[r.station] = { PG:0, G:0, D:0, K:0, total:0, group: r.group };
+      stationTotals[r.station][r.yj] = (stationTotals[r.station][r.yj] || 0) + r.qty;
+      stationTotals[r.station].total += r.qty;
+    });
   }
+
+  // 상세 뷰: 일별 집계
+  const byDate = {};
+  if (selectedStation !== "전체") {
+    filtered.forEach(r => {
+      if (!byDate[r.date]) byDate[r.date] = { PG:0, G:0, D:0, K:0 };
+      byDate[r.date][r.yj] = (byDate[r.date][r.yj] || 0) + r.qty;
+    });
+  }
+  const dailyRows = Object.entries(byDate).sort((a, b) => a[0].localeCompare(b[0]));
+
+  const stInfo  = RETAIL_STATIONS.find(s => s.name === selectedStation);
+  const stColor = GROUP_COLORS[stInfo?.group] || "#2563eb";
 
   return (
     <div style={{ paddingBottom: 40 }}>
-      {/* ── 상단 툴바 ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          {/* 월 선택 */}
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setMonth(e.target.value)}
-            style={{
-              padding: "8px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb",
-              fontSize: 14, color: "#111827", background: "#fff", cursor: "pointer",
-            }}
-          />
 
-          {/* 그룹 필터 */}
-          <div style={{ display: "flex", gap: 4 }}>
-            {["전체", "세일직영", "엘앤케이", "세영TMS"].map((g) => (
-              <button
-                key={g}
-                onClick={() => setGroup(g)}
-                style={{
-                  padding: "7px 14px", borderRadius: 8, border: "none",
-                  fontSize: 13, fontWeight: 600, cursor: "pointer",
-                  background: selectedGroup === g ? (GROUP_COLOR[g] || "#2563eb") : "#f3f4f6",
-                  color: selectedGroup === g ? "#fff" : "#6b7280",
-                  transition: "all 0.15s",
-                }}
-              >
-                {g}
-              </button>
-            ))}
+      {/* ── 업로드 드롭존 ── */}
+      <div
+        onDragOver={e => { e.preventDefault(); setDrag(true); }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={e => {
+          e.preventDefault(); setDrag(false);
+          const f = e.dataTransfer.files[0];
+          if (f) handleFile(f);
+        }}
+        onClick={() => document.getElementById("retail-erp-input").click()}
+        style={{
+          border: `2px dashed ${drag ? "#2563eb" : dzState === "done" ? "#16a34a" : "#d1d5db"}`,
+          borderRadius: 12,
+          padding: "20px 24px",
+          textAlign: "center",
+          cursor: "pointer",
+          background: dzState === "done" ? "rgba(22,163,74,0.04)" : drag ? "rgba(37,99,235,0.04)" : "#fafafa",
+          marginBottom: 20,
+          transition: "all 0.2s",
+        }}
+      >
+        {dzState === "loading" && (
+          <div style={{ color: "#9ca3af", fontSize: 13 }}>⏳ 파싱 중...</div>
+        )}
+        {dzState === "error" && (
+          <div>
+            <div style={{ color: "#ef4444", fontSize: 13, marginBottom: 4 }}>❌ 파일 파싱 실패 또는 관계사 주유소 데이터 없음</div>
+            <div style={{ color: "#9ca3af", fontSize: 11 }}>ERP 매출자료등록 파일(.xls/.xlsx)이어야 합니다. 클릭하여 다시 시도하세요.</div>
           </div>
-        </div>
+        )}
+        {dzState === "done" && dzInfo && (
+          <div style={{ color: "#16a34a", fontSize: 13 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>✓ {dzInfo.filename}</div>
+            <div style={{ marginBottom: 2 }}>{dzInfo.range} · {dzInfo.count.toLocaleString()}건</div>
+            <div style={{ fontSize: 11, color: "#6b7280" }}>추출된 주유소: {dzInfo.stations}</div>
+          </div>
+        )}
+        {dzState === "idle" && (
+          <>
+            <div style={{ fontSize: 24, marginBottom: 6 }}>📂</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>ERP 매출자료등록 파일 드롭 또는 클릭</div>
+            <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>.xls / .xlsx · 매출거래상세 시트 · 복수 업로드 가능</div>
+          </>
+        )}
+        <input
+          id="retail-erp-input"
+          type="file"
+          accept=".xls,.xlsx"
+          style={{ display: "none" }}
+          onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ""; }}
+        />
+      </div>
 
-        <button
-          onClick={() => { setUpload(""); setView("upload"); }}
+      {/* ── 필터 바 ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        {/* 주유소 드롭다운 */}
+        <select
+          value={selectedStation}
+          onChange={e => setStation(e.target.value)}
           style={{
-            padding: "9px 18px", borderRadius: 10, border: "none",
-            background: "#2563eb", color: "#fff", fontWeight: 700,
-            fontSize: 14, cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(37,99,235,0.3)",
+            padding: "8px 14px", borderRadius: 10,
+            border: "1.5px solid #e5e7eb", fontSize: 13,
+            color: "#111827", background: "#fff", cursor: "pointer",
+            minWidth: 170, appearance: "auto",
           }}
         >
-          + 마감일보 업로드
-        </button>
-      </div>
+          <option value="전체">전체 주유소</option>
+          {["세일직영", "엘앤케이", "세영TMS", "세일계열"].map(grp => (
+            <optgroup key={grp} label={grp}>
+              {RETAIL_STATIONS.filter(s => s.group === grp).map(s => (
+                <option key={s.name} value={s.name}>{s.name}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
 
-      {/* ── 오류 ── */}
-      {loadError && (
-        <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: "16px 20px", color: "#b91c1c", fontSize: 13, marginBottom: 20 }}>
-          {loadError}
-        </div>
-      )}
-
-      {/* ── 월 합계 요약 카드 ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
-        {[
-          { label: "월 합계 판매량", value: `${fmt(monthSummary.total_qty)} L`, sub: `휘발유 ${fmtM(monthSummary.gasoline_qty)}kL / 경유 ${fmtM(monthSummary.diesel_qty)}kL`, accent: "#2563eb" },
-          { label: "월 합계 매출", value: `${fmtM(monthSummary.total_amount)}천원`, sub: `${(monthSummary.total_amount / 1e8).toFixed(1)}억원`, accent: "#059669" },
-          { label: "월 세차 합계", value: `${fmt(monthSummary.car_wash_total)} 대`, sub: `${fmt(monthSummary.car_wash_amount)}원`, accent: "#d97706" },
-        ].map((c) => (
-          <div key={c.label} style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-            <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, marginBottom: 6 }}>{c.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: c.accent, fontFamily: "'JetBrains Mono', monospace" }}>{c.value}</div>
-            <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>{c.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── 사업장 카드 그리드 ── */}
-      {loading ? (
-        <div style={{ textAlign: "center", padding: 60, color: "#9ca3af", fontSize: 15 }}>데이터 불러오는 중...</div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16, marginBottom: 28 }}>
-          {filteredStations.map((s) => (
-            <StationCard
-              key={s.name}
-              station={s}
-              latestRec={latestByStation[s.name]}
-              allRecs={records}
-              onUpload={handleUpload}
-            />
+        {/* 월 칩 */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {months.map(m => (
+            <button key={m} onClick={() => setMonth(m)} style={chipStyle(selectedMonth === m)}>
+              {m.replace("-", "년 ")}월
+            </button>
           ))}
         </div>
-      )}
+      </div>
 
-      {/* ── 일별 판매 추이 차트 ── */}
-      {dailyChartData.length > 0 && (
-        <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e5e7eb", padding: "20px 24px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 20 }}>
-            일별 판매량 추이 — {selectedMonth}
-            <span style={{ fontSize: 12, color: "#9ca3af", fontWeight: 400, marginLeft: 8 }}>{selectedGroup}</span>
-          </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={dailyChartData} barGap={2} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
-              <XAxis dataKey="date" tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "#6b7280", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [`${fmt(v)} L`, n]} />
-              <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="gasoline" name="휘발유" fill="#2563eb" radius={[3, 3, 0, 0]} maxBarSize={28} opacity={0.85} />
-              <Bar dataKey="diesel"   name="경유"   fill="#059669" radius={[3, 3, 0, 0]} maxBarSize={28} opacity={0.85} />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* ── 로딩 ── */}
+      {loading && (
+        <div style={{ textAlign: "center", padding: 40, color: "#9ca3af", fontSize: 13 }}>
+          데이터 불러오는 중...
         </div>
       )}
 
-      {records.length === 0 && !loading && !loadError && (
+      {/* ── 데이터 없음 ── */}
+      {!loading && records.length === 0 && (
         <div style={{ textAlign: "center", padding: "60px 24px", color: "#9ca3af" }}>
-          <div style={{ fontSize: 40, marginBottom: 16 }}>📋</div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "#374151", marginBottom: 8 }}>이 달의 데이터가 없습니다</div>
-          <div style={{ fontSize: 13 }}>마감일보 파일을 업로드하면 여기에 표시됩니다</div>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "#374151", marginBottom: 6 }}>데이터가 없습니다</div>
+          <div style={{ fontSize: 13 }}>위 드롭존에 ERP 매출자료등록 파일(.xls)을 업로드해 주세요</div>
         </div>
+      )}
+
+      {/* ── 데이터 있음 ── */}
+      {!loading && records.length > 0 && (
+        <>
+          {/* 요약 카드 */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 20 }}>
+            {[
+              { label: "총 판매량", value: fmtKL(grandTotal), accent: "#111827" },
+              ...YJ_COLS.filter(c => totals[c] > 0).map(c => ({
+                label: YJ_LABELS[c], value: fmtKL(totals[c]), accent: YJ_COLORS[c]
+              })),
+            ].map(c => (
+              <div key={c.label} style={{
+                background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb",
+                padding: "14px 16px", textAlign: "center",
+              }}>
+                <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600, marginBottom: 4 }}>{c.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: c.accent }}>
+                  {c.value}
+                  <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af", marginLeft: 2 }}>kL</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── 전체 뷰: 주유소별 집계 테이블 ── */}
+          {selectedStation === "전체" && (
+            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", overflow: "hidden" }}>
+              <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", fontSize: 14, fontWeight: 700, color: "#111827" }}>
+                주유소별 판매량
+                <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginLeft: 6 }}>
+                  {selectedMonth.replace("-", "년 ")}월 · 단위: kL · 행 클릭 시 상세 조회
+                </span>
+              </div>
+              {Object.keys(stationTotals).length === 0 ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+                  해당 월에 데이터가 없습니다
+                </div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f9fafb" }}>
+                      <th style={th("left")}>주유소</th>
+                      <th style={th("left")}>그룹</th>
+                      {YJ_COLS.map(c => <th key={c} style={th("right")}>{YJ_LABELS[c]}</th>)}
+                      <th style={{ ...th("right"), fontWeight: 700 }}>합계</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(stationTotals)
+                      .sort((a, b) => b[1].total - a[1].total)
+                      .map(([name, t]) => {
+                        const color = GROUP_COLORS[t.group] || "#6b7280";
+                        return (
+                          <tr
+                            key={name}
+                            onClick={() => setStation(name)}
+                            style={{ cursor: "pointer" }}
+                            onMouseEnter={e => e.currentTarget.style.background = "#f8faff"}
+                            onMouseLeave={e => e.currentTarget.style.background = ""}
+                          >
+                            <td style={{ ...td("left"), fontWeight: 600, color: "#111827" }}>{name}</td>
+                            <td style={td("left")}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", background: `${color}18`, color, borderRadius: 6 }}>
+                                {t.group}
+                              </span>
+                            </td>
+                            {YJ_COLS.map(c => (
+                              <td key={c} style={{ ...td("right"), color: t[c] > 0 ? YJ_COLORS[c] : "#d1d5db" }}>
+                                {t[c] > 0 ? fmtKL(t[c]) : "—"}
+                              </td>
+                            ))}
+                            <td style={{ ...td("right"), fontWeight: 700 }}>{fmtKL(t.total)}</td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: "#f0f4ff", borderTop: "2px solid #c7d7f5" }}>
+                      <td style={{ ...td("left"), fontWeight: 700 }} colSpan={2}>합계</td>
+                      {YJ_COLS.map(c => (
+                        <td key={c} style={{ ...td("right"), fontWeight: 700, color: totals[c] > 0 ? YJ_COLORS[c] : "#d1d5db" }}>
+                          {totals[c] > 0 ? fmtKL(totals[c]) : "—"}
+                        </td>
+                      ))}
+                      <td style={{ ...td("right"), fontWeight: 700 }}>{fmtKL(grandTotal)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+          )}
+
+          {/* ── 상세 뷰: 특정 주유소 일별 내역 ── */}
+          {selectedStation !== "전체" && (
+            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", overflow: "hidden" }}>
+              <div style={{ padding: "14px 20px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button
+                    onClick={() => setStation("전체")}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 16, padding: "0 4px", lineHeight: 1 }}
+                  >
+                    ←
+                  </button>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{selectedStation}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", background: `${stColor}18`, color: stColor, borderRadius: 6 }}>
+                    {stInfo?.group}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: "#9ca3af" }}>단위: L</div>
+              </div>
+
+              {dailyRows.length === 0 ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+                  해당 월에 데이터가 없습니다
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: "#f9fafb" }}>
+                        <th style={th("left")}>날짜</th>
+                        {YJ_COLS.map(c => <th key={c} style={{ ...th("right"), color: YJ_COLORS[c] }}>{YJ_LABELS[c]}</th>)}
+                        <th style={{ ...th("right"), fontWeight: 700 }}>합계</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dailyRows.map(([date, t]) => {
+                        const rowTotal = YJ_COLS.reduce((s, c) => s + (t[c] || 0), 0);
+                        return (
+                          <tr key={date}>
+                            <td style={{ ...td("left"), color: "#6b7280" }}>{date}</td>
+                            {YJ_COLS.map(c => (
+                              <td key={c} style={{ ...td("right"), color: t[c] > 0 ? YJ_COLORS[c] : "#d1d5db" }}>
+                                {t[c] > 0 ? fmtL(t[c]) : "—"}
+                              </td>
+                            ))}
+                            <td style={{ ...td("right"), fontWeight: 600 }}>{fmtL(rowTotal)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: "#f0f4ff", borderTop: "2px solid #c7d7f5" }}>
+                        <td style={{ ...td("left"), fontWeight: 700 }}>합계</td>
+                        {YJ_COLS.map(c => (
+                          <td key={c} style={{ ...td("right"), fontWeight: 700, color: totals[c] > 0 ? YJ_COLORS[c] : "#d1d5db" }}>
+                            {totals[c] > 0 ? fmtL(totals[c]) : "—"}
+                          </td>
+                        ))}
+                        <td style={{ ...td("right"), fontWeight: 700 }}>{fmtL(grandTotal)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-// ── 스타일 헬퍼 ─────────────────────────────────────────────
-function cardStyle(color, alpha) {
-  return {
-    background: "#fff",
-    border: "1px solid #e5e7eb",
-    borderTop: `3px solid ${color}`,
-    borderRadius: 14,
-    overflow: "hidden",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-  };
-}
+// ── 스타일 헬퍼 ──────────────────────────────────────────────
+const th = (align) => ({
+  padding: "10px 14px",
+  textAlign: align,
+  fontWeight: 600,
+  color: "#374151",
+  fontSize: 12,
+  borderBottom: "1px solid #e5e7eb",
+  whiteSpace: "nowrap",
+});
 
-function cardHeader(color) {
-  return {
-    padding: "14px 16px",
-    background: `rgba(${hexToRgb(color)}, 0.04)`,
-    borderBottom: "1px solid #f3f4f6",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  };
-}
+const td = (align) => ({
+  padding: "10px 14px",
+  textAlign: align,
+  borderBottom: "1px solid #f3f4f6",
+  color: "#374151",
+  whiteSpace: "nowrap",
+});
 
-function uploadBtnStyle(color) {
-  return {
-    padding: "5px 12px", borderRadius: 8,
-    border: `1.5px solid ${color}`,
-    background: "transparent", color: color,
-    fontSize: 12, fontWeight: 700, cursor: "pointer",
-  };
-}
-
-function hexToRgb(hex) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `${r},${g},${b}`;
-}
+const chipStyle = (active) => ({
+  padding: "6px 12px",
+  borderRadius: 8,
+  border: "none",
+  fontSize: 12,
+  cursor: "pointer",
+  fontWeight: 600,
+  background: active ? "#2563eb" : "#f3f4f6",
+  color: active ? "#fff" : "#6b7280",
+  transition: "all 0.15s",
+});

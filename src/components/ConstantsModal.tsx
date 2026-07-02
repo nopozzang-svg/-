@@ -3,7 +3,6 @@ import type { MonthConstants, ProductConstants } from "../types/mops";
 import {
   getCurrentMonthConstants,
   getCurrentMonthKey,
-  getPrevMonthKey,
   saveAndSyncConstants,
   getDefaultProducts,
   getAllConstants,
@@ -61,11 +60,20 @@ export default function ConstantsModal({ isOpen, onClose, onSaved }: Props) {
     setProducts(existing ? structuredClone(existing.products) : getDefaultProducts());
   };
 
-  // 전월 값 불러오기
+  // 전월 값 불러오기 — 현재 선택된 month 기준으로 직전월 계산
   const loadPrevMonth = () => {
-    const prevKey  = getPrevMonthKey();
-    const prev     = getCurrentMonthConstants(prevKey);
-    setProducts(prev ? structuredClone(prev.products) : getDefaultProducts());
+    const [y, m] = month.split("-").map(Number);
+    const prevKey = m === 1
+      ? `${y - 1}-12`
+      : `${y}-${String(m - 1).padStart(2, "0")}`;
+
+    const prev = getCurrentMonthConstants(prevKey);
+    if (prev) { setProducts(structuredClone(prev.products)); return; }
+
+    // 직전월 데이터 없으면 저장된 월 중 현재 선택월보다 이전 가장 최근 것 사용
+    const all = getAllConstants();
+    const recent = Object.keys(all).filter(k => k < month).sort().at(-1);
+    setProducts(recent ? structuredClone(all[recent].products) : getDefaultProducts());
   };
 
   // 입력값 변경

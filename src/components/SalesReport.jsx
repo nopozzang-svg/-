@@ -110,7 +110,7 @@ const supaHeaders = { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Co
 const SupaCurrent = {
   async getAll() {
     try {
-      const res = await fetch(`${SUPA_URL}/rest/v1/sales_current?select=jiyeok,records`, { headers: supaHeaders });
+      const res = await fetch(`${SUPA_URL}/rest/v1/sales_current?jiyeok=in.(수도권,영남권)&select=jiyeok,records`, { headers: supaHeaders });
       if (!res.ok) return [];
       const rows = await res.json();
       return rows.flatMap((r) => r.records || []);
@@ -320,11 +320,6 @@ export default function SalesReport() {
     const minDate = uploadedDates[0];
     const maxDate = uploadedDates[uploadedDates.length - 1];
 
-    // Supabase: 해당 지역의 현재 데이터를 새 데이터로 교체 (모든 기기 공유)
-    const supaAll = await SupaCurrent.getAll();
-    const supaOther = supaAll.filter((r) => r.jiyeok !== jiyeok); // 다른 지역 보존
-    const newSupaRecs = [...supaOther, ...valid];
-    // jiyeok별로 분리해서 upsert
     await SupaCurrent.upsert(jiyeok, valid);
 
     // 화면: 기존 records에서 해당 지역+날짜범위만 교체 (수도권/영남권 각각 보존)
@@ -333,8 +328,11 @@ export default function SalesReport() {
       ...valid,
     ];
     setRecords(merged);
-    const dates = merged.map((r) => r.date).filter(Boolean).sort();
-    if (dates.length) { setDateFrom(dates[0]); setDateTo(dates[dates.length - 1]); }
+    const uploadedMonth = maxDate.substring(0, 7);
+    const [ly, lm] = uploadedMonth.split("-");
+    const lastDay = new Date(+ly, +lm, 0).getDate();
+    setDateFrom(`${uploadedMonth}-01`);
+    setDateTo(`${uploadedMonth}-${String(lastDay).padStart(2, "0")}`);
     setTab("report");
   };
 
