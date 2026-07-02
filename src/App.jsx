@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import MopsSection from "./components/MopsSection";
 import SalesReport from "./components/SalesReport";
+import RetailSalesReport from "./components/RetailSalesReport";
 import ConstantsModal from "./components/ConstantsModal";
 import { syncConstantsFromSupabase } from "./lib/mopsConstants";
 import {
@@ -1373,14 +1374,14 @@ export default function SailDashboard() {
         <SailLogo />
         <div className="dash-header-right">
           <div className="toggle-group">
-            {[{ key: "gasoline", label: "휘발유" }, { key: "diesel", label: "경유" }, { key: "kerosene", label: "등유" }, { key: "intl", label: "국제지표" }, { key: "sales", label: "판매 리포트" }].map(f => (
+            {[{ key: "gasoline", label: "휘발유" }, { key: "diesel", label: "경유" }, { key: "kerosene", label: "등유" }, { key: "intl", label: "국제지표" }, { key: "sales", label: "판매 리포트" }, { key: "retail", label: "소매판매리포트" }].map(f => (
               <button key={f.key} onClick={() => setFuelType(f.key)} className="toggle-btn" style={{
-                background: fuelType === f.key ? (f.key === "kerosene" ? "rgba(234,88,12,0.1)" : f.key === "intl" ? "rgba(124,58,237,0.1)" : f.key === "sales" ? "rgba(5,150,105,0.1)" : "rgba(37,99,235,0.1)") : "transparent",
-                color: fuelType === f.key ? (f.key === "kerosene" ? "#ea580c" : f.key === "intl" ? "#7c3aed" : f.key === "sales" ? "#059669" : "#2563eb") : "#6b7280",
+                background: fuelType === f.key ? (f.key === "kerosene" ? "rgba(234,88,12,0.1)" : f.key === "intl" ? "rgba(124,58,237,0.1)" : f.key === "sales" ? "rgba(5,150,105,0.1)" : f.key === "retail" ? "rgba(217,119,6,0.1)" : "rgba(37,99,235,0.1)") : "transparent",
+                color: fuelType === f.key ? (f.key === "kerosene" ? "#ea580c" : f.key === "intl" ? "#7c3aed" : f.key === "sales" ? "#059669" : f.key === "retail" ? "#d97706" : "#2563eb") : "#6b7280",
               }}>{f.label}</button>
             ))}
           </div>
-          {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && (
+          {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && fuelType !== "retail" && (
             <div className="toggle-group">
               {[{ key: "overview", label: "종합" }, { key: "detail", label: "상세" }, { key: "trend", label: "추세" }, { key: "chain", label: "계열" }].map(v => (
                 <button key={v.key} onClick={() => setActiveView(v.key)} className="toggle-btn" style={{
@@ -1404,7 +1405,7 @@ export default function SailDashboard() {
       <main className="dash-main">
 
         {/* ── 국제 원유 · 환율 · MOPS ── */}
-        <div className="intl-section" style={fuelType === "sales" ? { display: "none" } : {}}>
+        <div className="intl-section" style={fuelType === "sales" || fuelType === "retail" ? { display: "none" } : {}}>
           <div className="intl-crude-row">
             {[
               { label: "WTI",       data: intlData?.petro?.wti,   unit: "$/bbl" },
@@ -1550,7 +1551,7 @@ export default function SailDashboard() {
         )}
 
         {/* Summary Cards — 등유·국제지표 탭에서는 숨김 */}
-        {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && (
+        {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && fuelType !== "retail" && (
           <div className="summary-grid">
             <StatCard label={`세일 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.sailAvg} sub="원/리터" accent="#2563eb" />
             <StatCard label={`경쟁사 평균 ${fuelLabel}`} value={apiStatus === "loading" ? "—" : summary.compAvg} sub="원/리터" accent="#374151" />
@@ -1602,7 +1603,7 @@ export default function SailDashboard() {
         )}
 
         {/* ── OVERVIEW ── */}
-        {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && activeView === "overview" && (
+        {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && fuelType !== "retail" && activeView === "overview" && (
           <>
             <PostedPriceTable data={data} prevDate={prevDateLabel} />
 
@@ -1673,14 +1674,14 @@ export default function SailDashboard() {
         )}
 
         {/* ── DETAIL ── */}
-        {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && activeView === "detail" && (
+        {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && fuelType !== "retail" && activeView === "detail" && (
           <div className="detail-grid">
             {data.groups.map((g, i) => <GroupCard key={i} group={g} fuelType={fuelType} />)}
           </div>
         )}
 
         {/* ── TREND ── */}
-        {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && activeView === "trend" && (
+        {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && fuelType !== "retail" && activeView === "trend" && (
           <div className="dash-panel">
             <h2 className="panel-title" style={{ marginBottom: 20 }}>최근 7일 가격 추세 · {fuelLabel}</h2>
             <ResponsiveContainer width="100%" height={300}>
@@ -1713,8 +1714,11 @@ export default function SailDashboard() {
         {/* ── 판매 리포트 ── */}
         {fuelType === "sales" && <SalesReport />}
 
+        {/* ── 소매 판매 리포트 ── */}
+        {fuelType === "retail" && <RetailSalesReport />}
+
         {/* ── CHAIN (계열) ── */}
-        {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && activeView === "chain" && (
+        {fuelType !== "kerosene" && fuelType !== "intl" && fuelType !== "sales" && fuelType !== "retail" && activeView === "chain" && (
           <PostedPriceTable
             data={data}
             groups={data.chainGroups}
