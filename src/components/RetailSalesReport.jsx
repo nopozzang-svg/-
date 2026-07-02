@@ -19,6 +19,7 @@ const supaHeaders = {
 // kerosene_qty, total_qty, total_amount,
 // car_wash_small, car_wash_large, car_wash_total, car_wash_amount,
 // gasoline_inv, diesel_inv, kerosene_inv,
+// gasoline_inv_prev, diesel_inv_prev, kerosene_inv_prev,
 // created_at, updated_at
 
 const STATIONS = [
@@ -49,16 +50,20 @@ function parseNum(val) {
 
 // 마감일보 CSV/XLS 파싱 (0-indexed row, 0-indexed col)
 // Row 3:  날짜  - col[3]=년(2자리), col[5]=월, col[7]=일
-// Row 8:  무연 재고 - col[24]=장부재고
-// Row 21: 경유 재고 - col[24]=장부재고
-// Row 33: 등유 재고 - col[24]=장부재고
+// Row 8:  무연 재고 - col[3]=전일재고, col[24]=장부재고(현재고)
+// Row 21: 경유 재고 - col[3]=전일재고, col[24]=장부재고(현재고)
+// Row 33: 등유 재고 - col[3]=전일재고, col[24]=장부재고(현재고)
 // Row 39: 무연 판매 - col[15]=수량, col[18]=매출
 // Row 40: 경유 판매 - col[15]=수량, col[18]=매출
 // Row 41: 등유 판매 - col[15]=수량, col[18]=매출
 // Row 59: 세차 대수 - col[3]=소형, col[7]=대형
 // Row 63: 세차 금액 - col[3]=총금액
 function parseMagamReport(workbook) {
-  const ws = workbook.Sheets[workbook.SheetNames[0]];
+  // 파일마다 첫 시트가 다르므로(예: 남부순환로 = "Chart1") "마감장" 시트를 이름으로 찾는다
+  const sheetName = workbook.SheetNames.includes("마감장")
+    ? "마감장"
+    : workbook.SheetNames[0];
+  const ws = workbook.Sheets[sheetName];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
   if (raw.length < 65) throw new Error("파일 행 수 부족 — 마감일보 형식이 아닙니다");
@@ -84,6 +89,9 @@ function parseMagamReport(workbook) {
     gas_inv:       parseNum(g(8,  24)),
     diesel_inv:    parseNum(g(21, 24)),
     kero_inv:      parseNum(g(33, 24)),
+    gas_inv_prev:    parseNum(g(8,  3)),
+    diesel_inv_prev: parseNum(g(21, 3)),
+    kero_inv_prev:   parseNum(g(33, 3)),
     carwash_small: parseNum(g(59,  3)),
     carwash_large: parseNum(g(59,  7)),
     carwash_amt:   parseNum(g(63,  3)),
@@ -136,6 +144,9 @@ async function supaUpsert(stationName, stationGroup, parsed) {
       gasoline_inv:    parsed.gas_inv,
       diesel_inv:      parsed.diesel_inv,
       kerosene_inv:    parsed.kero_inv,
+      gasoline_inv_prev: parsed.gas_inv_prev,
+      diesel_inv_prev:   parsed.diesel_inv_prev,
+      kerosene_inv_prev: parsed.kero_inv_prev,
       updated_at:      new Date().toISOString(),
     }),
   });
@@ -255,6 +266,37 @@ export default function RetailSalesReport() {
 
   const stInfo  = STATIONS.find(s => s.name === selectedStation);
   const stColor = GROUP_COLORS[stInfo?.group] || "#2563eb";
+
+  // 재고 현황 & 가용일수 (최신일 기준, 최근 7일 평균 판매량)
+  // 전체 데이터(rows) 기준으로 계산 → 월 경계와 무관하게 안정적
+  const status = (() => {
+    if (selectedStation === "전체") return null;
+    const sr = rows
+      .filter(r => r.station_name === selectedStation && r.date)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    if (!sr.length) return null;
+    const latest = sr[0];
+    const last7  = sr.slice(0, 7);
+    const avgQty = (key) =>
+      last7.reduce((s, r) => s + (r[key] || 0), 0) / last7.length;
+    const mk = (invKey, prevKey, qtyKey) => {
+      const inv = latest[invKey] || 0;
+      const avg = avgQty(qtyKey);
+      return { prev: latest[prevKey] || 0, inv, avg, days: avg > 0 ? inv / avg : null };
+    };
+    return {
+      date: latest.date,
+      n:    last7.length,
+      fuels: [
+        { key: "gas",    label: "휘발유", color: "#2563eb", ...mk("gasoline_inv", "gasoline_inv_prev", "gasoline_qty") },
+        { key: "diesel", label: "경유",   color: "#059669", ...mk("diesel_inv",   "diesel_inv_prev",   "diesel_qty") },
+        { key: "kero",   label: "등유",   color: "#ea580c", ...mk("kerosene_inv", "kerosene_inv_prev", "kerosene_qty") },
+      ].filter(f => f.inv > 0 || f.prev > 0),
+    };
+  })();
+
+  const daysColor = (d) =>
+    d == null ? "#9ca3af" : d < 5 ? "#ef4444" : d < 10 ? "#d97706" : "#16a34a";
 
   return (
     <div style={{ paddingBottom: 40 }}>
@@ -489,6 +531,42 @@ export default function RetailSalesReport() {
                 </div>
                 <div style={{ fontSize: 11, color: "#9ca3af" }}>판매량: L / 재고·세차: L·원</div>
               </div>
+
+              {/* ── 재고 현황 & 가용일수 ── */}
+              {status && status.fuels.length > 0 && (
+                <div style={{ padding: "16px 20px", borderBottom: "1px solid #f3f4f6", background: "#fbfcfe" }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 10 }}>
+                    재고 현황 · 가용일수
+                    <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>
+                      {status.date} 기준 · 최근 {status.n}일 평균 판매량
+                    </span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                    {status.fuels.map(f => (
+                      <div key={f.key} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: f.color }}>{f.label}</span>
+                          <span style={{ fontSize: 20, fontWeight: 800, color: daysColor(f.days) }}>
+                            {f.days == null ? "—" : f.days.toFixed(1)}
+                            <span style={{ fontSize: 11, fontWeight: 500, color: "#9ca3af", marginLeft: 2 }}>일</span>
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.7 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>전일재고</span><span style={{ color: "#374151" }}>{fmtL(f.prev)} L</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>현재고</span><span style={{ color: "#111827", fontWeight: 700 }}>{fmtL(f.inv)} L</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>7일 평균판매</span><span style={{ color: "#374151" }}>{fmtL(f.avg)} L/일</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {dailyRows.length === 0 ? (
                 <div style={{ padding: 40, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>해당 월에 데이터가 없습니다</div>
