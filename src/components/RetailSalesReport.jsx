@@ -328,7 +328,7 @@ export default function RetailSalesReport() {
   const [selectedStation, setStation]      = useState("전체");
   const [dateFrom,       setDateFrom]      = useState("");
   const [dateTo,         setDateTo]        = useState("");
-  const [avgMode,        setAvgMode]       = useState(false);   // false=합계, true=일평균
+  const [avgMode,        setAvgMode]       = useState(true);    // 기본=일평균(주유소별 데이터 일수가 달라 합계 비교는 불공정). 토글로 합계 전환 가능
   const [showKero,       setShowKero]      = useState(false);   // 등유 컬럼 표시
   const [processing,     setProcessing]    = useState(false);
   const [results,        setResults]       = useState([]);
@@ -697,6 +697,7 @@ export default function RetailSalesReport() {
                       <tr>
                         <th rowSpan={2} style={gh("left", false)}>주유소</th>
                         <th rowSpan={2} style={gh("left", false)}>운영사</th>
+                        <th rowSpan={2} style={gh("center", false)}>일수</th>
                         <th colSpan={showKero ? 4 : 3} style={gh("center", true, SEC_HEAD.sales)}>유류판매 ({modeLabel}·DM)</th>
                         <th colSpan={showKero ? 3 : 2} style={gh("center", true, SEC_HEAD.inv)}>현재고 (DM)</th>
                         <th colSpan={showKero ? 3 : 2} style={gh("center", true, SEC_HEAD.days)}>가용일수</th>
@@ -735,6 +736,7 @@ export default function RetailSalesReport() {
                             <td style={{ ...td("left"), background: nameBg }}>
                               <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", background: `${color}18`, color, borderRadius: 6 }}>{a.group}</span>
                             </td>
+                            <td style={{ ...td("center"), background: nameBg, color: "#6b7280", fontSize: 12 }}>{a.nDays}일</td>
                             <td style={secTd(S.sales, true,  a.gas    > 0 ? C_GAS : "#c9cdd3")}>{fmtDM(a.gas)}</td>
                             <td style={secTd(S.sales, false, a.diesel > 0 ? C_DIESEL : "#c9cdd3")}>{fmtDM(a.diesel)}</td>
                             {showKero && <td style={secTd(S.sales, false, a.kero > 0 ? C_KERO : "#c9cdd3")}>{fmtDM(a.kero)}</td>}
@@ -754,7 +756,7 @@ export default function RetailSalesReport() {
                     </tbody>
                     <tfoot>
                       <tr style={{ borderTop: "2px solid #c7d7f5" }}>
-                        <td style={{ ...td("left"), fontWeight: 700, background: "#eef2f7" }} colSpan={2}>합계</td>
+                        <td style={{ ...td("left"), fontWeight: 700, background: "#eef2f7" }} colSpan={3}>합계</td>
                         <td style={{ ...secTd(SEC_HOVER.sales, true,  C_GAS),    fontWeight: 700 }}>{fmtDM(grand.gas)}</td>
                         <td style={{ ...secTd(SEC_HOVER.sales, false, C_DIESEL), fontWeight: 700 }}>{fmtDM(grand.diesel)}</td>
                         {showKero && <td style={{ ...secTd(SEC_HOVER.sales, false, C_KERO), fontWeight: 700 }}>{fmtDM(grand.kero)}</td>}
