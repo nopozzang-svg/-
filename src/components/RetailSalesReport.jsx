@@ -199,15 +199,20 @@ function parseLnkWorkbook(wb) {
     for (let r = 5; r < raw.length; r++) {          // R6~ (당월 일자 행). 과거월 행은 col1이 문자열이라 자동 제외
       const ds = lnkDateStr(raw[r]?.[1]);
       if (!ds) continue;
+      const gasAmt = parseNum(raw[r][11]);
+      const dieAmt = parseNum(raw[r][17]);
+      // 아직 안 지난(미기입) 날은 매출이 비어 있고 실재고도 공란 → 저장하지 않음.
+      // 이걸 넣으면 "마지막 날짜"가 미래 빈 날이 되어 현재고가 0으로 표시됨.
+      if (gasAmt === 0 && dieAmt === 0) continue;
       items.push({
         stationName: st.name,
         group:       st.group,
         parsed: {
           dateStr:      ds,
           gas_qty:      parseNum(raw[r][7]),
-          gas_amt:      parseNum(raw[r][11]),
+          gas_amt:      gasAmt,
           diesel_qty:   parseNum(raw[r][13]),
-          diesel_amt:   parseNum(raw[r][17]),
+          diesel_amt:   dieAmt,
           kero_qty:     0,
           kero_amt:     0,
           gas_inv:      gasInv[ds] || 0,
@@ -236,6 +241,14 @@ async function supaGetAll() {
       String(body.message || "").includes("does not exist");
     return { error: isTableMissing ? "table_missing" : "fetch_error", data: [] };
   } catch { return { error: "network_error", data: [] }; }
+}
+
+// 특정 주유소의 날짜 구간 행 일괄 삭제 (엘앤케이 월간 파일 재업로드 시 이전 잔재·빈 행 정리용)
+async function supaDeleteRange(stationName, startDate, endDate) {
+  await fetch(
+    `${SUPABASE_URL}/rest/v1/daily_station_report?station_name=eq.${encodeURIComponent(stationName)}&date=gte.${startDate}&date=lte.${endDate}`,
+    { method: "DELETE", headers: supaHeaders }
+  );
 }
 
 async function supaUpsert(stationName, stationGroup, parsed) {
@@ -361,6 +374,13 @@ export default function RetailSalesReport() {
         if (isLnkWorkbook(wb)) {
           const items = parseLnkWorkbook(wb);
           if (!items.length) throw new Error("엘앤케이 일자별 데이터를 찾지 못했습니다");
+          // 재업로드 대비: 파일에 담긴 (주유소×월)별로 기존 행을 먼저 정리 후 삽입
+          // (이전에 잘못 들어간 미래 빈 날 행까지 제거)
+          const monthKeys = [...new Set(items.map(i => `${i.stationName}|${i.parsed.dateStr.substring(0, 7)}`))];
+          for (const key of monthKeys) {
+            const [sn, ym] = key.split("|");
+            await supaDeleteRange(sn, `${ym}-01`, `${ym}-${String(monthLastDay(ym)).padStart(2, "0")}`);
+          }
           for (const it of items) await supaUpsert(it.stationName, it.group, it.parsed);
           const dates = items.map(i => i.parsed.dateStr).sort();
           const stns  = [...new Set(items.map(i => i.stationName))].join(", ");
