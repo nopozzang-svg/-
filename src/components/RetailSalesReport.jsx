@@ -128,6 +128,101 @@ function parseMagamReport(workbook) {
   };
 }
 
+// ── 엘앤케이 전용 파서 ───────────────────────────────────────────
+// 엘앤케이는 다른 주유소와 달리 "월간·2개소 통합" 엑셀 한 파일로 옴.
+//   · 일자별 매출 시트:  "26.06(용인제1)", "26.06(김포제2)" (월 prefix는 매달 바뀜)
+//   · 유류재고 관리대장: "무연(용인제1)", "경유(용인제1)" …
+// 한 파일 → 2개소 × 그 달 일수 만큼의 일별 행을 만들어 반환. 저장은 기존 supaUpsert 재사용.
+const LNK_DAILY_RE = /^\d{2}\.\d{2}\((.+)\)$/; // "26.06(용인제1)" → 캡처: "용인제1"
+
+// 엘앤케이 통합 파일 여부 (일자별 시트 패턴 존재). 세일·세영 마감일보엔 이런 시트명이 없어 오탐 불가
+function isLnkWorkbook(wb) {
+  return wb.SheetNames.some(n => LNK_DAILY_RE.test(n));
+}
+
+// 시트명 안의 주유소 라벨("용인제1")을 STATIONS(엘앤케이)로 매핑
+function lnkStationFor(label) {
+  const clean = String(label).replace(/\s/g, "");
+  return STATIONS.find(s => s.group === "엘앤케이" && s.aliases.some(a => clean.includes(a))) || null;
+}
+
+// Excel 날짜(직렬번호 또는 Date) → "YYYY-MM-DD". 날짜가 아니면(합계·일평균·과거월 행 등) null
+function lnkDateStr(cell) {
+  if (cell instanceof Date) {
+    if (cell.getFullYear() < 2000) return null;
+    return `${cell.getFullYear()}-${String(cell.getMonth() + 1).padStart(2, "0")}-${String(cell.getDate()).padStart(2, "0")}`;
+  }
+  if (typeof cell === "number") {
+    // 1900 날짜체계: 25569 = 1899-12-30 ~ 1970-01-01 일수. UTC로 계산해 시차 오차 방지
+    const dt = new Date(Math.round((cell - 25569) * 86400 * 1000));
+    if (isNaN(dt.getTime()) || dt.getUTCFullYear() < 2000) return null;
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+  }
+  return null;
+}
+
+// 시트를 2차원 배열로 읽되, 선행 빈 열(A 등)이 잘려 인덱스가 밀리지 않도록 항상 A열(0)부터 포함.
+// (재고대장 시트는 A열이 통째로 비어 SheetJS 기본 파싱 시 열이 1칸 밀리는 문제가 있음)
+function lnkSheetRows(ws) {
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+  range.s.c = 0;
+  range.s.r = 0;
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", range });
+}
+
+// 유류재고 관리대장 시트에서 "날짜 → 실재고(L)" 맵 생성 (col: 1=일자, 8=실재고)
+function lnkInventoryMap(wb, label, fuelPrefix) {
+  const name = `${fuelPrefix}(${label})`;
+  const map = {};
+  if (!wb.SheetNames.includes(name)) return map;
+  const raw = lnkSheetRows(wb.Sheets[name]);
+  for (let r = 3; r < raw.length; r++) {            // R4~ (데이터 시작)
+    const ds = lnkDateStr(raw[r]?.[1]);
+    if (!ds) continue;                              // 월계·합계 등 비-날짜 행 제외
+    map[ds] = parseNum(raw[r][8]);                  // 실재고
+  }
+  return map;
+}
+
+// 엘앤케이 통합 워크북 → [{ stationName, group, parsed }, …]
+// 일자별 시트 컬럼(0-index): 1=일자, 7=무연L, 11=무연매출, 13=경유L, 17=경유매출, 19=세차매출, 21=세차댓수
+function parseLnkWorkbook(wb) {
+  const items = [];
+  const dailySheets = wb.SheetNames.filter(n => LNK_DAILY_RE.test(n));
+  for (const sheetName of dailySheets) {
+    const label = sheetName.match(LNK_DAILY_RE)[1];
+    const st = lnkStationFor(label);
+    if (!st) continue;                              // 매핑 실패 시 해당 시트 건너뜀
+    const gasInv = lnkInventoryMap(wb, label, "무연");
+    const dieInv = lnkInventoryMap(wb, label, "경유");
+    const raw = lnkSheetRows(wb.Sheets[sheetName]);
+    for (let r = 5; r < raw.length; r++) {          // R6~ (당월 일자 행). 과거월 행은 col1이 문자열이라 자동 제외
+      const ds = lnkDateStr(raw[r]?.[1]);
+      if (!ds) continue;
+      items.push({
+        stationName: st.name,
+        group:       st.group,
+        parsed: {
+          dateStr:      ds,
+          gas_qty:      parseNum(raw[r][7]),
+          gas_amt:      parseNum(raw[r][11]),
+          diesel_qty:   parseNum(raw[r][13]),
+          diesel_amt:   parseNum(raw[r][17]),
+          kero_qty:     0,
+          kero_amt:     0,
+          gas_inv:      gasInv[ds] || 0,
+          diesel_inv:   dieInv[ds] || 0,
+          kero_inv:     0,
+          carwash_free: 0,                          // 엘앤케이는 무료/유료 구분 없음 → 전량 유료로 기록
+          carwash_paid: parseNum(raw[r][21]),
+          carwash_amt:  parseNum(raw[r][19]),
+        },
+      });
+    }
+  }
+  return items;
+}
+
 // ── Supabase ─────────────────────────────────────────────────────
 async function supaGetAll() {
   try {
@@ -261,6 +356,23 @@ export default function RetailSalesReport() {
       try {
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, { type: "array", cellDates: false });
+
+        // 엘앤케이: 월간·2개소 통합 파일 → 전용 파서로 여러 행 한 번에 저장
+        if (isLnkWorkbook(wb)) {
+          const items = parseLnkWorkbook(wb);
+          if (!items.length) throw new Error("엘앤케이 일자별 데이터를 찾지 못했습니다");
+          for (const it of items) await supaUpsert(it.stationName, it.group, it.parsed);
+          const dates = items.map(i => i.parsed.dateStr).sort();
+          const stns  = [...new Set(items.map(i => i.stationName))].join(", ");
+          lastDate = dates[dates.length - 1];
+          res.push({
+            filename: file.name, station: stns,
+            date: `${dates[0]} ~ ${dates[dates.length - 1]} · ${items.length}건`,
+            status: "done",
+          });
+          continue;
+        }
+
         const parsed = parseMagamReport(wb);
         const st = detectStation(wb, file.name);
         if (st) {
