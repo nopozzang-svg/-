@@ -52,6 +52,10 @@ const GROUP_COLORS = {
   "세영TMS":   "#d97706",
 };
 
+// 표·드롭다운 공통 운영사 정렬 순서
+const GROUP_ORDER = ["세일직영", "엘앤케이", "세영TMS"];
+const groupRank = (g) => { const i = GROUP_ORDER.indexOf(g); return i === -1 ? 99 : i; };
+
 // 단위 상수
 const DM_LITERS = 200; // 1 DM = 200 L (드럼)
 
@@ -477,7 +481,7 @@ export default function RetailSalesReport() {
     a.name = name;
     a.group = sr[0]?.station_group || STATIONS.find(s => s.name === name)?.group || "";
     return a;
-  }).sort((a, b) => b.total - a.total);
+  }).sort((a, b) => groupRank(a.group) - groupRank(b.group) || b.total - a.total); // 운영사 순 → 그룹 내 판매량 많은 순
 
   // 표시 대상 (전체 or 특정 주유소)
   const visibleAggs = selectedStation === "전체" ? aggs : aggs.filter(a => a.name === selectedStation);
