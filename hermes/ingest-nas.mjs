@@ -159,6 +159,8 @@ async function collectExcelFiles(info, sid, folderPath) {
       if (yr && !TARGET_YEARS.has(yr)) continue; // 대상 아닌 연도 폴더 가지치기
       out = out.concat(await collectExcelFiles(info, sid, e.path));
     } else if (/\.(xls|xlsx|xlsm)$/i.test(e.name)) {
+      const fileDate = dateFromFilename(e.name);
+      if (fileDate && !isAllowedReportDate(fileDate)) continue;
       out.push(e);
     }
   }
@@ -201,21 +203,18 @@ function dateFromFilename(name) {
   return `20${String(yy).padStart(2, "0")}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
 }
 
-function isRecentBackfillDate(fileDate) {
+const REPORT_START = "2026-06-01";
+const REPORT_END = "2026-07-31";
+
+function isAllowedReportDate(fileDate) {
   if (!fileDate) return false;
-  const horizonDays = Number(process.env.BACKFILL_DAYS || 14);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const cutoff = new Date(today);
-  cutoff.setDate(cutoff.getDate() - horizonDays);
-  const d = new Date(`${fileDate}T00:00:00`);
-  return !Number.isNaN(d.getTime()) && d >= cutoff && d <= today;
+  return fileDate >= REPORT_START && fileDate <= REPORT_END;
 }
 
 function shouldForceResync(file) {
   if (!RESYNC_FROM) return false;
   const fileDate = dateFromFilename(file.name || file.path || "");
-  return !!fileDate && fileDate > RESYNC_FROM;
+  return !!fileDate && isAllowedReportDate(fileDate) && fileDate > RESYNC_FROM;
 }
 
 async function loadExistingReportIndex() {
@@ -224,7 +223,9 @@ async function loadExistingReportIndex() {
     console.log(`[웹앱] 기존 데이터 조회 실패(${error}) — 파일/이력 기준으로만 처리`);
     return new Set();
   }
-  return new Set((data || []).map(r => `${r.station_name}|${r.date}`));
+  return new Set((data || [])
+    .filter(r => isAllowedReportDate(String(r.date)))
+    .map(r => `${r.station_name}|${r.date}`));
 }
 
 // ── 대상 파일 수집 / 새 파일 저장 ─────────────────────────────────
@@ -256,7 +257,7 @@ async function importJobs(info, sid, jobs, processed, alerts, existingIndex) {
     const mtime = f.additional?.time?.mtime ?? 0;
     const fileDate = dateFromFilename(f.name);
     const dbKey = fileDate ? `${station.name}|${fileDate}` : null;
-    const needsBackfill = !!(dbKey && existingIndex && !existingIndex.has(dbKey) && isRecentBackfillDate(fileDate));
+    const needsBackfill = !!(dbKey && existingIndex && !existingIndex.has(dbKey) && isAllowedReportDate(fileDate));
     const forceResync = shouldForceResync(f) || needsBackfill;
     if (!forceResync && processed[f.path] === mtime) { skipped++; continue; } // 이미 처리(변경 없음)
     try {
