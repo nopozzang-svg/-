@@ -48,7 +48,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import * as XLSX from "xlsx";
 import { STATIONS, parseMagamReport, isLnkWorkbook } from "../src/lib/retailParser.js";
-import { saveWorkbookResult, supaStationsOnDate } from "../src/lib/retailStore.js";
+import { saveWorkbookResult, supaStationsOnDate, supaGetAll } from "../src/lib/retailStore.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROCESSED_FILE = join(HERE, ".processed.json"); // {path: mtime} — 재업로드(mtime 변경) 시 재처리
@@ -201,10 +201,30 @@ function dateFromFilename(name) {
   return `20${String(yy).padStart(2, "0")}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
 }
 
+function isRecentBackfillDate(fileDate) {
+  if (!fileDate) return false;
+  const horizonDays = Number(process.env.BACKFILL_DAYS || 14);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cutoff = new Date(today);
+  cutoff.setDate(cutoff.getDate() - horizonDays);
+  const d = new Date(`${fileDate}T00:00:00`);
+  return !Number.isNaN(d.getTime()) && d >= cutoff && d <= today;
+}
+
 function shouldForceResync(file) {
   if (!RESYNC_FROM) return false;
   const fileDate = dateFromFilename(file.name || file.path || "");
   return !!fileDate && fileDate > RESYNC_FROM;
+}
+
+async function loadExistingReportIndex() {
+  const { error, data } = await supaGetAll();
+  if (error) {
+    console.log(`[웹앱] 기존 데이터 조회 실패(${error}) — 파일/이력 기준으로만 처리`);
+    return new Set();
+  }
+  return new Set((data || []).map(r => `${r.station_name}|${r.date}`));
 }
 
 // ── 대상 파일 수집 / 새 파일 저장 ─────────────────────────────────
@@ -230,15 +250,20 @@ async function buildJobs(info, sid, alerts) {
 }
 
 // 새/수정된 파일만 다운로드·파싱·저장. processed 갱신. { done, skipped } 반환.
-async function importJobs(info, sid, jobs, processed, alerts) {
+async function importJobs(info, sid, jobs, processed, alerts, existingIndex) {
   let done = 0, skipped = 0;
   for (const { station, file: f } of jobs) {
     const mtime = f.additional?.time?.mtime ?? 0;
-    const forceResync = shouldForceResync(f);
+    const fileDate = dateFromFilename(f.name);
+    const dbKey = fileDate ? `${station.name}|${fileDate}` : null;
+    const needsBackfill = !!(dbKey && existingIndex && !existingIndex.has(dbKey) && isRecentBackfillDate(fileDate));
+    const forceResync = shouldForceResync(f) || needsBackfill;
     if (!forceResync && processed[f.path] === mtime) { skipped++; continue; } // 이미 처리(변경 없음)
     try {
-      if (forceResync && processed[f.path] === mtime) {
-        console.log(`🔁 ${station.name} ${dateFromFilename(f.name) || "(날짜미상)"} → 재동기화`);
+      if (needsBackfill && processed[f.path] === mtime) {
+        console.log(`🩹 ${station.name} ${fileDate} → 웹앱 누락 백필`);
+      } else if (forceResync && processed[f.path] === mtime) {
+        console.log(`🔁 ${station.name} ${fileDate || "(날짜미상)"} → 재동기화`);
       }
       const buf = await download(info, sid, f.path);
       const wb = XLSX.read(buf, { type: "buffer", cellDates: false });
@@ -250,6 +275,7 @@ async function importJobs(info, sid, jobs, processed, alerts) {
       const parsed = parseMagamReport(wb);
       await saveWorkbookResult({ type: "magam", station, parsed });
       console.log(`✅ ${station.name} ${parsed.dateStr} ← ${f.name}`);
+      if (dbKey) existingIndex?.add(dbKey);
       processed[f.path] = mtime; done++;
     } catch (err) {
       alerts.push(`❌ ${station.name} / ${f.name} — ${err.message}`); // 잡파일·파싱실패
@@ -259,7 +285,7 @@ async function importJobs(info, sid, jobs, processed, alerts) {
 }
 
 // ── 아침 체크: 어제 일보 7개소 도착 여부 → 미도착 수집 시도 → 마감 시 텔레그램 ──
-async function runMorning(info, sid, alerts) {
+async function runMorning(info, sid, alerts, existingIndex) {
   const now = new Date();
   const y = new Date(now); y.setDate(y.getDate() - 1);
   const target = ymd(y);                       // 어제 날짜
@@ -276,7 +302,7 @@ async function runMorning(info, sid, alerts) {
   console.log(`[아침체크] ${target} 미도착: ${missing.join(", ")} → NAS 수집 시도`);
   const processed = await loadProcessed();
   const jobs = await buildJobs(info, sid, alerts);
-  await importJobs(info, sid, jobs, processed, alerts);
+  await importJobs(info, sid, jobs, processed, alerts, existingIndex);
   await saveProcessed(processed);
 
   missing = await missingNow();
@@ -307,7 +333,11 @@ async function main() {
   const alerts = []; // 사람이 봐야 할 것 (파싱 실패 등)
   try {
     // 아침 체크 모드: 어제 일보 도착 여부 확인 → 미도착 수집 → 마감 시 텔레그램
-    if (MORNING) { await runMorning(info, sid, alerts); return; }
+    if (MORNING) {
+      const existingIndex = await loadExistingReportIndex();
+      await runMorning(info, sid, alerts, existingIndex);
+      return;
+    }
 
     const jobs = await buildJobs(info, sid, alerts);
 
@@ -352,8 +382,12 @@ async function main() {
       return; // logout 은 finally 에서
     }
 
+    const existingIndex = await loadExistingReportIndex();
+
     // 일반 실행: 새/수정된 파일만 다운로드·파싱·저장
-    const { done, skipped } = await importJobs(info, sid, jobs, processed, alerts);
+    const { done, skipped } = await importJobs(info, sid, jobs, processed, alerts, existingIndex);
+
+
     await saveProcessed(processed);
     console.log(`\n완료: 저장 ${done} · 건너뜀 ${skipped} · 알림 ${alerts.length}`);
     if (alerts.length) {
