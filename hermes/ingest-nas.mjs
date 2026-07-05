@@ -60,13 +60,10 @@ const TARGET_YEARS = new Set(
     .split(",").map(s => s.trim()).filter(Boolean)
 );
 
-// self-signed 인증서 허용 옵션 (undici는 Node에 내장)
-let dispatcher;
-if (NAS_INSECURE === "1") {
-  const { Agent } = await import("undici");
-  dispatcher = new Agent({ connect: { rejectUnauthorized: false } });
-}
-const fetchOpts = dispatcher ? { dispatcher } : {};
+// self-signed 인증서 허용: 시놀로지 기본 인증서가 self-signed 라 https:5001 검증이 실패함.
+// 외부 패키지(undici) 없이 되도록 Node 전역 TLS 검증만 끈다(이 단일 목적 스크립트 한정).
+if (NAS_INSECURE === "1") process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+const fetchOpts = {};
 
 // ── 시놀로지 FileStation API 클라이언트 ──────────────────────────
 // 엔드포인트 경로/버전은 SYNO.API.Info 로 동적 조회 (DSM 버전 간 차이 흡수)
