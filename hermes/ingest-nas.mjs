@@ -3,6 +3,10 @@
 // 맥미니에서 Hermes가 주기적으로 실행하는 스크립트. 웹앱의 드롭 업로드와 **완전히 동일한**
 // 파싱/저장 로직(../src/lib/retailParser.js, retailStore.js)을 그대로 재사용한다.
 //
+// 【자동화 범위】 소장들이 NAS에 올리는 5개소만 자동 처리:
+//   통일로일품·남부순환로(세영TMS) · 박달·안양·광교(세일직영)  ← 모두 마감일보(magam) 형식
+//   ⚠️ 엘앤케이(용인1·김포2)는 사람이 웹앱에 직접 드롭 담당 → NAS에서 발견해도 저장하지 않고 건너뜀.
+//
 // 흐름: 로그인 → 폴더 파일목록 → 새 파일만 선별 → 다운로드 → 파싱 → Supabase 저장 → 미처리분 리포트
 //
 // 실행 (Node 20+):
@@ -25,6 +29,9 @@ import { saveWorkbookResult } from "../src/lib/retailStore.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROCESSED_FILE = join(HERE, ".processed.json"); // {path: mtime} — 재업로드(mtime 변경) 시 재처리
+
+// 이 운영사 소속 주유소(용인1·김포2)는 웹앱 수동 드롭 담당 → NAS 자동 저장 제외
+const MANUAL_ONLY_GROUP = "엘앤케이";
 
 const {
   NAS_URL,
@@ -127,17 +134,32 @@ async function main() {
         const wb = XLSX.read(buf, { type: "buffer", cellDates: false });
         const result = parseWorkbook(wb, f.name);
 
+        // 엘앤케이(용인1·김포2) 월간 통합파일 = 사람이 웹앱에 직접 드롭 담당 → 자동 저장 금지.
+        // (자동으로 넣으면 웹앱 수동 업로드와 충돌·중복) 다음 실행부턴 다운로드 없이 건너뛰도록 기록.
+        if (result.type === "lnk") {
+          console.log(`⏭️  ${f.name} → 엘앤케이(수동 담당) 파일 건너뜀`);
+          processed[f.path] = mtime;
+          skipped++;
+          continue;
+        }
+
         if (result.type === "manual") {
           // 주유소 자동인식 실패 → 저장하지 않고 사람에게 넘김 (무인 자동화라 임의 배정 금지)
           alerts.push(`⚠️ 주유소 자동인식 실패: ${f.name} (${result.parsed.dateStr}) — 웹앱에서 수동 지정 필요`);
           continue; // processed 에 기록하지 않음 → 다음 실행 때 재시도
         }
 
+        // 여기부터 magam = 자동화 대상 5개소(통일로일품·남부순환로·박달·안양·광교) 중 하나.
+        // 방어적 이중차단: 정상 경로론 엘앤케이가 magam으로 오지 않지만 혹시 몰라 그룹으로도 걸러냄.
+        if (result.station.group === MANUAL_ONLY_GROUP) {
+          console.log(`⏭️  ${f.name} → ${result.station.name}(수동 담당) 건너뜀`);
+          processed[f.path] = mtime;
+          skipped++;
+          continue;
+        }
+
         const dates = await saveWorkbookResult(result);
-        const label = result.type === "lnk"
-          ? `${result.items.length}건 (${dates[0]}~${dates[dates.length - 1]})`
-          : `${result.station.name} ${dates[0]}`;
-        console.log(`✅ ${f.name} → ${label}`);
+        console.log(`✅ ${f.name} → ${result.station.name} ${dates[0]}`);
         processed[f.path] = mtime;
         done++;
       } catch (err) {
