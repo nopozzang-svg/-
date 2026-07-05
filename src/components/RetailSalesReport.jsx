@@ -33,6 +33,13 @@ const fmtKW = (won) => (won > 0 ? Math.round(won / 1000).toLocaleString() : "—
 const fmtCnt = (n) => (n > 0 ? n.toLocaleString("ko-KR", { maximumFractionDigits: 1 }) : "—");
 // 가용일수
 const fmtDays = (d) => (d == null ? "—" : d.toLocaleString("ko-KR", { maximumFractionDigits: 1 }));
+const fmtDateWithWeekday = (dateStr) => {
+  if (!dateStr) return "—";
+  const dt = new Date(`${dateStr}T00:00:00+09:00`);
+  if (Number.isNaN(dt.getTime())) return dateStr;
+  const weekday = new Intl.DateTimeFormat("ko-KR", { weekday: "short", timeZone: "Asia/Seoul" }).format(dt);
+  return `${dateStr} (${weekday})`;
+};
 
 // 가용일수 색상: 3일 미만 빨강 / 7일 이내 주황 / 그 외 초록
 const daysColor = (d) =>
@@ -557,7 +564,7 @@ export default function RetailSalesReport() {
                         const rowTotal = (r.gasoline_qty || 0) + (r.diesel_qty || 0) + (r.kerosene_qty || 0);
                         return (
                           <tr key={r.date}>
-                            <td style={{ ...td("left"), color: "#6b7280" }}>{r.date}</td>
+                            <td style={{ ...td("left"), color: "#6b7280" }}>{fmtDateWithWeekday(r.date)}</td>
                             <td style={{ ...td("right"), color: r.gasoline_qty > 0 ? C_GAS : "#d1d5db" }}>{fmtDM(r.gasoline_qty)}</td>
                             <td style={{ ...td("right"), color: r.diesel_qty   > 0 ? C_DIESEL : "#d1d5db" }}>{fmtDM(r.diesel_qty)}</td>
                             {showKero && <td style={{ ...td("right"), color: r.kerosene_qty > 0 ? C_KERO : "#d1d5db" }}>{fmtDM(r.kerosene_qty)}</td>}
