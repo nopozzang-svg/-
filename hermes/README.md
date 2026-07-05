@@ -41,6 +41,9 @@
 - 이 한 줄이 NAS 확인 → 새/수정 파일만 다운로드 → 파싱 → 대시보드(Supabase) 반영을 다 한다.
   (웹앱 화면을 조작할 필요 없음. 웹앱은 이 DB를 읽어 보여줄 뿐이라 결과가 바로 반영됨)
 - 실행 후 출력의 `완료: 저장 N · 건너뜀 M` 을 사용자에게 그대로 보고. 저장 N>0 이면 그만큼 새로 들어온 것.
+- 시드로 얼어붙은 과거분을 다시 넣어야 하면:
+  - `node --env-file=hermes/.env hermes/ingest-nas.mjs --resync-from 2026-07-01`
+  - 기준일 *이후* 파일만 처리이력 무시하고 다시 저장한다. (`--seed` 와는 함께 쓰지 않음)
 
 ### "어제 일보 다 왔는지 확인해줘" (미도착 시 텔레그램)
 - `node --env-file=hermes/.env hermes/ingest-nas.mjs --morning`

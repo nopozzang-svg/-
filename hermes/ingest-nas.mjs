@@ -25,6 +25,8 @@
 //        node --env-file=hermes/.env hermes/ingest-nas.mjs --seed
 //   ② 이후 일반 실행 — 시드 이후 새로 올라오거나 수정된 파일만 가져와 저장:
 //        node --env-file=hermes/.env hermes/ingest-nas.mjs
+//   ②-1 재동기화 — 특정 날짜 이후 파일은 처리이력 무시하고 다시 저장:
+//        node --env-file=hermes/.env hermes/ingest-nas.mjs --resync-from 2026-07-01
 //   (검증) --test : 주유소별 최신 파일 1개만 받아 파싱값 출력(저장 안 함). 대시보드와 대조용.
 //        node --env-file=hermes/.env hermes/ingest-nas.mjs --test
 //   ③ 아침 체크 --morning : 어제 일보가 7개소 다 도착했나 확인 → 미도착분 NAS 수집 시도.
@@ -62,6 +64,16 @@ const SEED = process.argv.includes("--seed") || process.env.NAS_SEED === "1";
 const TEST = process.argv.includes("--test");
 // 아침 체크 모드: 어제 일보가 7개소 다 도착했나 확인 → 미도착 시 수집 시도 → 마감(11시)까지 안 오면 텔레그램
 const MORNING = process.argv.includes("--morning");
+// 재동기화 모드: 시드로 '처리됨' 표시됐지만 대시보드엔 빠진 과거 일보 복구.
+// 파일명 날짜(YYMMDD)가 기준일 이후인 것만, 처리이력 무시하고 다시 저장. 예: --resync-from 2026-07-01
+const rfIdx = process.argv.indexOf("--resync-from");
+const RESYNC_FROM = rfIdx >= 0 ? process.argv[rfIdx + 1] : null;
+if (RESYNC_FROM && !/^\d{4}-\d{2}-\d{2}$/.test(RESYNC_FROM)) {
+  throw new Error("--resync-from 형식은 YYYY-MM-DD 이어야 합니다");
+}
+if (SEED && RESYNC_FROM) {
+  throw new Error("--seed 와 --resync-from 은 함께 사용할 수 없습니다");
+}
 
 // 처리 대상 연도(2자리 문자열). 미설정 시 올해만 → 첫 실행 때 과거 수년치 백필 폭탄 방지.
 const TARGET_YEARS = new Set(
@@ -179,6 +191,22 @@ async function sendTelegram(text) {
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+function dateFromFilename(name) {
+  const m = String(name).match(/(\d{6})(?=\D|$)/);
+  if (!m) return null;
+  const yy = Number(m[1].slice(0, 2));
+  const mm = Number(m[1].slice(2, 4));
+  const dd = Number(m[1].slice(4, 6));
+  if (!yy || mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  return `20${String(yy).padStart(2, "0")}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+}
+
+function shouldForceResync(file) {
+  if (!RESYNC_FROM) return false;
+  const fileDate = dateFromFilename(file.name || file.path || "");
+  return !!fileDate && fileDate > RESYNC_FROM;
+}
+
 // ── 대상 파일 수집 / 새 파일 저장 ─────────────────────────────────
 // 대상 주유소 폴더 → "일보" 하위폴더 → 대상 연도 파일. [{station, file}, …] 반환.
 async function buildJobs(info, sid, alerts) {
@@ -206,8 +234,12 @@ async function importJobs(info, sid, jobs, processed, alerts) {
   let done = 0, skipped = 0;
   for (const { station, file: f } of jobs) {
     const mtime = f.additional?.time?.mtime ?? 0;
-    if (processed[f.path] === mtime) { skipped++; continue; } // 이미 처리(변경 없음)
+    const forceResync = shouldForceResync(f);
+    if (!forceResync && processed[f.path] === mtime) { skipped++; continue; } // 이미 처리(변경 없음)
     try {
+      if (forceResync && processed[f.path] === mtime) {
+        console.log(`🔁 ${station.name} ${dateFromFilename(f.name) || "(날짜미상)"} → 재동기화`);
+      }
       const buf = await download(info, sid, f.path);
       const wb = XLSX.read(buf, { type: "buffer", cellDates: false });
       if (isLnkWorkbook(wb)) { // 방어적: 일보 폴더에 엘앤케이 통합파일 있을 리 없지만 있으면 저장 안 함
