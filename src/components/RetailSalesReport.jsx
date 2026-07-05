@@ -3,48 +3,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
-
-const SUPABASE_URL = "https://ozxjyzhndrgyvtewlkac.supabase.co";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im96eGp5emhuZHJneXZ0ZXdsa2FjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5OTgyNjcsImV4cCI6MjA4NzU3NDI2N30.ESPSK3MZeXMf5gK6ajT0eeNedqxiuniS3zRFbuyzPu4";
-const supaHeaders = {
-  apikey: SUPABASE_ANON_KEY,
-  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-  "Content-Type": "application/json",
-};
-
-// 테이블 스키마 (daily_station_report):
-// id, date, station_name, station_group,
-// gasoline_qty, gasoline_amount, diesel_qty, diesel_amount,
-// kerosene_qty, total_qty, total_amount,
-// car_wash_small, car_wash_large, car_wash_total, car_wash_amount,
-// car_wash_free, car_wash_paid,
-// gasoline_inv, diesel_inv, kerosene_inv,
-// created_at, updated_at
-
-// aliases: 파일 자동 분류용 키워드 (파일 내 주유소명 + 파일명에서 탐색). 서로 겹치지 않게 유지
-const STATIONS = [
-  { name: "통일로일품주유소", group: "세영TMS",  aliases: ["일품"] },
-  { name: "남부순환로주유소", group: "세영TMS",  aliases: ["남부순환"] },
-  { name: "용인1주유소",      group: "엘앤케이", aliases: ["용인"] },
-  { name: "김포2주유소",      group: "엘앤케이", aliases: ["김포"] },
-  { name: "박달주유소",       group: "세일직영", aliases: ["박달"] },
-  { name: "안양주유소",       group: "세일직영", aliases: ["안양"] },
-  { name: "광교주유소",       group: "세일직영", aliases: ["광교"] },
-];
-
-// 워크북 + 파일명으로 주유소 자동 판별. 정확히 1곳만 매칭될 때만 반환(모호하면 null → 수동 지정)
-function detectStation(workbook, filename) {
-  let inFileName = "";
-  try {
-    const sheet = workbook.Sheets[workbook.SheetNames.includes("마감장") ? "마감장" : workbook.SheetNames[0]];
-    const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-    inFileName = String(raw[1]?.[3] ?? ""); // 마감장 r1 col3 = 주유소명
-  } catch { /* 무시 */ }
-  const hay = `${inFileName} ${filename}`.replace(/\s/g, "");
-  const matches = STATIONS.filter(s => s.aliases.some(a => hay.includes(a)));
-  return matches.length === 1 ? matches[0] : null;
-}
+import { STATIONS, parseWorkbook, monthLastDay } from "../lib/retailParser.js";
+import { supaGetAll, saveWorkbookResult } from "../lib/retailStore.js";
 
 const GROUP_COLORS = {
   "세일직영": "#2563eb",
@@ -62,238 +22,6 @@ const DM_LITERS = 200; // 1 DM = 200 L (드럼)
 // 유종 색상
 const C_GAS = "#2563eb", C_DIESEL = "#059669", C_KERO = "#ea580c", C_WASH = "#7c3aed";
 
-// ── 파싱 ────────────────────────────────────────────────────────
-function parseNum(val) {
-  if (val === undefined || val === null) return 0;
-  if (typeof val === "number") return val;
-  const s = String(val).replace(/,/g, "").trim();
-  if (!s || s === "-") return 0;
-  return parseFloat(s) || 0;
-}
-
-// 마감일보 파싱 (0-indexed row, 0-indexed col)  — "마감장" 시트
-// Row 3:  날짜  - col[3]=년(2자리), col[5]=월, col[7]=일
-// Row 8:  무연 재고 - col[24]=장부재고(현재고)
-// Row 21: 경유 재고 - col[24]=장부재고(현재고)
-// Row 33: 등유 재고 - col[24]=장부재고(현재고)
-// Row 39: 무연 판매 - col[15]=수량, col[18]=매출
-// Row 40: 경유 판매 - col[15]=수량, col[18]=매출
-// Row 41: 등유 판매 - col[15]=수량, col[18]=매출
-// Row 63: 세차 금액 - col[3]=총금액
-// 세차 대수(무료/유료)는 "세차" 시트에서 파싱 (구조가 주유소 간 통일돼 있음)
-function parseMagamReport(workbook) {
-  // 파일마다 첫 시트가 다르므로(예: 남부순환로 = "Chart1") "마감장" 시트를 이름으로 찾는다
-  const sheetName = workbook.SheetNames.includes("마감장")
-    ? "마감장"
-    : workbook.SheetNames[0];
-  const ws = workbook.Sheets[sheetName];
-  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-
-  if (raw.length < 65) throw new Error("파일 행 수 부족 — 마감일보 형식이 아닙니다");
-
-  const g = (row, col) => raw[row]?.[col] ?? "";
-
-  // 날짜
-  const yearSuffix = String(g(3, 3)).trim();
-  const month      = String(g(3, 5)).trim();
-  const day        = String(g(3, 7)).trim();
-  if (!yearSuffix || !month || !day) throw new Error("날짜 파싱 실패");
-  const year    = yearSuffix.length === 2 ? `20${yearSuffix}` : yearSuffix;
-  const dateStr = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-
-  // 세차 시트에서 무료/유료 대수 파싱
-  let carwash_free = 0, carwash_paid = 0;
-  if (workbook.SheetNames.includes("세차")) {
-    const cw = XLSX.utils.sheet_to_json(workbook.Sheets["세차"], { header: 1, defval: "" });
-    const dayNum = parseInt(day, 10);
-    for (let r = 6; r < cw.length; r++) {
-      if (parseInt(String(cw[r]?.[0]).trim(), 10) === dayNum) {
-        carwash_free = parseNum(cw[r][3]); // 무료 소계
-        carwash_paid = parseNum(cw[r][6]); // 유료 소계
-        break;
-      }
-    }
-  }
-
-  return {
-    dateStr,
-    gas_qty:       parseNum(g(39, 15)),
-    gas_amt:       parseNum(g(39, 18)),
-    diesel_qty:    parseNum(g(40, 15)),
-    diesel_amt:    parseNum(g(40, 18)),
-    kero_qty:      parseNum(g(41, 15)),
-    kero_amt:      parseNum(g(41, 18)),
-    gas_inv:       parseNum(g(8,  24)),
-    diesel_inv:    parseNum(g(21, 24)),
-    kero_inv:      parseNum(g(33, 24)),
-    carwash_free,
-    carwash_paid,
-    carwash_amt:   parseNum(g(63, 3)),
-  };
-}
-
-// ── 엘앤케이 전용 파서 ───────────────────────────────────────────
-// 엘앤케이는 다른 주유소와 달리 "월간·2개소 통합" 엑셀 한 파일로 옴.
-//   · 일자별 매출 시트:  "26.06(용인제1)", "26.06(김포제2)" (월 prefix는 매달 바뀜)
-//   · 유류재고 관리대장: "무연(용인제1)", "경유(용인제1)" …
-// 한 파일 → 2개소 × 그 달 일수 만큼의 일별 행을 만들어 반환. 저장은 기존 supaUpsert 재사용.
-const LNK_DAILY_RE = /^\d{2}\.\d{2}\((.+)\)$/; // "26.06(용인제1)" → 캡처: "용인제1"
-
-// 엘앤케이 통합 파일 여부 (일자별 시트 패턴 존재). 세일·세영 마감일보엔 이런 시트명이 없어 오탐 불가
-function isLnkWorkbook(wb) {
-  return wb.SheetNames.some(n => LNK_DAILY_RE.test(n));
-}
-
-// 시트명 안의 주유소 라벨("용인제1")을 STATIONS(엘앤케이)로 매핑
-function lnkStationFor(label) {
-  const clean = String(label).replace(/\s/g, "");
-  return STATIONS.find(s => s.group === "엘앤케이" && s.aliases.some(a => clean.includes(a))) || null;
-}
-
-// Excel 날짜(직렬번호 또는 Date) → "YYYY-MM-DD". 날짜가 아니면(합계·일평균·과거월 행 등) null
-function lnkDateStr(cell) {
-  if (cell instanceof Date) {
-    if (cell.getFullYear() < 2000) return null;
-    return `${cell.getFullYear()}-${String(cell.getMonth() + 1).padStart(2, "0")}-${String(cell.getDate()).padStart(2, "0")}`;
-  }
-  if (typeof cell === "number") {
-    // 1900 날짜체계: 25569 = 1899-12-30 ~ 1970-01-01 일수. UTC로 계산해 시차 오차 방지
-    const dt = new Date(Math.round((cell - 25569) * 86400 * 1000));
-    if (isNaN(dt.getTime()) || dt.getUTCFullYear() < 2000) return null;
-    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
-  }
-  return null;
-}
-
-// 시트를 2차원 배열로 읽되, 선행 빈 열(A 등)이 잘려 인덱스가 밀리지 않도록 항상 A열(0)부터 포함.
-// (재고대장 시트는 A열이 통째로 비어 SheetJS 기본 파싱 시 열이 1칸 밀리는 문제가 있음)
-function lnkSheetRows(ws) {
-  const range = XLSX.utils.decode_range(ws["!ref"]);
-  range.s.c = 0;
-  range.s.r = 0;
-  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", range });
-}
-
-// 유류재고 관리대장 시트에서 "날짜 → 실재고(L)" 맵 생성 (col: 1=일자, 8=실재고)
-function lnkInventoryMap(wb, label, fuelPrefix) {
-  const name = `${fuelPrefix}(${label})`;
-  const map = {};
-  if (!wb.SheetNames.includes(name)) return map;
-  const raw = lnkSheetRows(wb.Sheets[name]);
-  for (let r = 3; r < raw.length; r++) {            // R4~ (데이터 시작)
-    const ds = lnkDateStr(raw[r]?.[1]);
-    if (!ds) continue;                              // 월계·합계 등 비-날짜 행 제외
-    map[ds] = parseNum(raw[r][8]);                  // 실재고
-  }
-  return map;
-}
-
-// 엘앤케이 통합 워크북 → [{ stationName, group, parsed }, …]
-// 일자별 시트 컬럼(0-index): 1=일자, 7=무연L, 11=무연매출, 13=경유L, 17=경유매출, 19=세차매출, 21=세차댓수
-function parseLnkWorkbook(wb) {
-  const items = [];
-  const dailySheets = wb.SheetNames.filter(n => LNK_DAILY_RE.test(n));
-  for (const sheetName of dailySheets) {
-    const label = sheetName.match(LNK_DAILY_RE)[1];
-    const st = lnkStationFor(label);
-    if (!st) continue;                              // 매핑 실패 시 해당 시트 건너뜀
-    const gasInv = lnkInventoryMap(wb, label, "무연");
-    const dieInv = lnkInventoryMap(wb, label, "경유");
-    const raw = lnkSheetRows(wb.Sheets[sheetName]);
-    for (let r = 5; r < raw.length; r++) {          // R6~ (당월 일자 행). 과거월 행은 col1이 문자열이라 자동 제외
-      const ds = lnkDateStr(raw[r]?.[1]);
-      if (!ds) continue;
-      const gasAmt = parseNum(raw[r][11]);
-      const dieAmt = parseNum(raw[r][17]);
-      // 아직 안 지난(미기입) 날은 매출이 비어 있고 실재고도 공란 → 저장하지 않음.
-      // 이걸 넣으면 "마지막 날짜"가 미래 빈 날이 되어 현재고가 0으로 표시됨.
-      if (gasAmt === 0 && dieAmt === 0) continue;
-      items.push({
-        stationName: st.name,
-        group:       st.group,
-        parsed: {
-          dateStr:      ds,
-          gas_qty:      parseNum(raw[r][7]),
-          gas_amt:      gasAmt,
-          diesel_qty:   parseNum(raw[r][13]),
-          diesel_amt:   dieAmt,
-          kero_qty:     0,
-          kero_amt:     0,
-          gas_inv:      gasInv[ds] || 0,
-          diesel_inv:   dieInv[ds] || 0,
-          kero_inv:     0,
-          carwash_free: 0,                          // 엘앤케이는 무료/유료 구분 없음 → 전량 유료로 기록
-          carwash_paid: parseNum(raw[r][21]),
-          carwash_amt:  parseNum(raw[r][19]),
-        },
-      });
-    }
-  }
-  return items;
-}
-
-// ── Supabase ─────────────────────────────────────────────────────
-async function supaGetAll() {
-  try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/daily_station_report?select=*&order=date.asc`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
-    );
-    if (res.ok) return { error: null, data: await res.json() };
-    const body = await res.json().catch(() => ({}));
-    const isTableMissing = (body.code === "42P01") ||
-      String(body.message || "").includes("does not exist");
-    return { error: isTableMissing ? "table_missing" : "fetch_error", data: [] };
-  } catch { return { error: "network_error", data: [] }; }
-}
-
-// 특정 주유소의 날짜 구간 행 일괄 삭제 (엘앤케이 월간 파일 재업로드 시 이전 잔재·빈 행 정리용)
-async function supaDeleteRange(stationName, startDate, endDate) {
-  await fetch(
-    `${SUPABASE_URL}/rest/v1/daily_station_report?station_name=eq.${encodeURIComponent(stationName)}&date=gte.${startDate}&date=lte.${endDate}`,
-    { method: "DELETE", headers: supaHeaders }
-  );
-}
-
-async function supaUpsert(stationName, stationGroup, parsed) {
-  // 같은 주유소+날짜 기존 행 삭제 후 재삽입 (upsert 대용)
-  await fetch(
-    `${SUPABASE_URL}/rest/v1/daily_station_report?station_name=eq.${encodeURIComponent(stationName)}&date=eq.${parsed.dateStr}`,
-    { method: "DELETE", headers: supaHeaders }
-  );
-
-  const total_qty    = parsed.gas_qty + parsed.diesel_qty + parsed.kero_qty;
-  const total_amount = parsed.gas_amt + parsed.diesel_amt + parsed.kero_amt;
-
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/daily_station_report`, {
-    method: "POST",
-    headers: supaHeaders,
-    body: JSON.stringify({
-      date:            parsed.dateStr,
-      station_name:    stationName,
-      station_group:   stationGroup,
-      gasoline_qty:    parsed.gas_qty,
-      gasoline_amount: parsed.gas_amt,
-      diesel_qty:      parsed.diesel_qty,
-      diesel_amount:   parsed.diesel_amt,
-      kerosene_qty:    parsed.kero_qty,
-      total_qty,
-      total_amount,
-      car_wash_free:   parsed.carwash_free,
-      car_wash_paid:   parsed.carwash_paid,
-      car_wash_total:  parsed.carwash_free + parsed.carwash_paid,
-      car_wash_amount: parsed.carwash_amt,
-      gasoline_inv:    parsed.gas_inv,
-      diesel_inv:      parsed.diesel_inv,
-      kerosene_inv:    parsed.kero_inv,
-      updated_at:      new Date().toISOString(),
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || `HTTP ${res.status}`);
-  }
-}
 
 // ── 포맷 유틸 ────────────────────────────────────────────────────
 // 유류: L → DM (1 DM = 200 L), 소수 1자리
@@ -310,10 +38,6 @@ const fmtDays = (d) => (d == null ? "—" : d.toLocaleString("ko-KR", { maximumF
 const daysColor = (d) =>
   d == null ? "#d1d5db" : d < 3 ? "#ef4444" : d <= 7 ? "#d97706" : "#16a34a";
 
-const monthLastDay = (ym) => {
-  const [y, m] = ym.split("-").map(Number);
-  return new Date(y, m, 0).getDate();
-};
 function getMonthStr(offset = 0) {
   const d = new Date();
   d.setMonth(d.getMonth() + offset);
@@ -374,38 +98,25 @@ export default function RetailSalesReport() {
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, { type: "array", cellDates: false });
 
-        // 엘앤케이: 월간·2개소 통합 파일 → 전용 파서로 여러 행 한 번에 저장
-        if (isLnkWorkbook(wb)) {
-          const items = parseLnkWorkbook(wb);
-          if (!items.length) throw new Error("엘앤케이 일자별 데이터를 찾지 못했습니다");
-          // 재업로드 대비: 파일에 담긴 (주유소×월)별로 기존 행을 먼저 정리 후 삽입
-          // (이전에 잘못 들어간 미래 빈 날 행까지 제거)
-          const monthKeys = [...new Set(items.map(i => `${i.stationName}|${i.parsed.dateStr.substring(0, 7)}`))];
-          for (const key of monthKeys) {
-            const [sn, ym] = key.split("|");
-            await supaDeleteRange(sn, `${ym}-01`, `${ym}-${String(monthLastDay(ym)).padStart(2, "0")}`);
-          }
-          for (const it of items) await supaUpsert(it.stationName, it.group, it.parsed);
-          const dates = items.map(i => i.parsed.dateStr).sort();
-          const stns  = [...new Set(items.map(i => i.stationName))].join(", ");
-          lastDate = dates[dates.length - 1];
+        // 파싱은 공용 모듈(retailParser)에, 저장도 공용 모듈(retailStore)에 위임 —
+        // Hermes 자동화와 완전히 동일한 로직을 공유한다. 여기서는 화면 표시 메시지만 만든다.
+        const result = parseWorkbook(wb, file.name);
+        const savedDates = await saveWorkbookResult(result);
+
+        if (result.type === "lnk") {
+          const stns = [...new Set(result.items.map(i => i.stationName))].join(", ");
+          lastDate = savedDates[savedDates.length - 1];
           res.push({
             filename: file.name, station: stns,
-            date: `${dates[0]} ~ ${dates[dates.length - 1]} · ${items.length}건`,
+            date: `${savedDates[0]} ~ ${savedDates[savedDates.length - 1]} · ${result.items.length}건`,
             status: "done",
           });
-          continue;
-        }
-
-        const parsed = parseMagamReport(wb);
-        const st = detectStation(wb, file.name);
-        if (st) {
-          await supaUpsert(st.name, st.group, parsed);
-          res.push({ filename: file.name, station: st.name, date: parsed.dateStr, status: "done" });
-          lastDate = parsed.dateStr;
+        } else if (result.type === "magam") {
+          res.push({ filename: file.name, station: result.station.name, date: result.parsed.dateStr, status: "done" });
+          lastDate = result.parsed.dateStr;
         } else {
-          // 자동 인식 실패 → 수동 지정용으로 파싱 결과 보관
-          res.push({ filename: file.name, date: parsed.dateStr, status: "manual", parsed });
+          // 자동 인식 실패 → 수동 지정용으로 파싱 결과 보관 (저장 안 됨)
+          res.push({ filename: file.name, date: result.parsed.dateStr, status: "manual", parsed: result.parsed });
         }
       } catch (err) {
         console.error(err);
@@ -424,7 +135,7 @@ export default function RetailSalesReport() {
     const item = results[idx];
     if (!st || !item?.parsed) return;
     try {
-      await supaUpsert(st.name, st.group, item.parsed);
+      await saveWorkbookResult({ type: "magam", station: st, parsed: item.parsed });
       setResults(rs => rs.map((r, i) => i === idx ? { filename: r.filename, station: st.name, date: r.date, status: "done" } : r));
       await reload();
       setMonthRange(item.date.substring(0, 7));

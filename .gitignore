@@ -28,3 +28,7 @@ dist-ssr
 # Process output files
 err.txt
 out.txt
+
+# Hermes NAS ingestion
+hermes/.processed.json
+!hermes/.env.example
