@@ -3,43 +3,55 @@
 // 맥미니에서 Hermes가 주기적으로 실행하는 스크립트. 웹앱의 드롭 업로드와 **완전히 동일한**
 // 파싱/저장 로직(../src/lib/retailParser.js, retailStore.js)을 그대로 재사용한다.
 //
-// 【자동화 범위】 소장들이 NAS에 올리는 5개소만 자동 처리:
-//   통일로일품·남부순환로(세영TMS) · 박달·안양·광교(세일직영)  ← 모두 마감일보(magam) 형식
-//   ⚠️ 엘앤케이(용인1·김포2)는 사람이 웹앱에 직접 드롭 담당 → NAS에서 발견해도 저장하지 않고 건너뜀.
+// 【NAS 폴더 구조】 (2026-07 기준 실제 확인)
+//   /seil_share/주유소 운영 (소매)/
+//       ├ 118 남부순환로주유소/  … /XXX 일보/26년 일보/26년7월/*.xls   ← 대상
+//       ├ 138 통일로일품주유소/ 통일로 일품주유소 일보/26년 일보/26년7월/세영일품260701.xls
+//       ├ 구도일 광교신도시/ · 구도일 박달/ · (구도일)안양/            ← 대상
+//       ├ 139두바이 · 140아바타 · 145온산 · 곰돌이 …                  ← 대시보드 대상 아님 → 무시
+//       └ (엘앤케이 용인1·김포2)                                      ← 웹앱 수동 드롭 담당 → 무시
 //
-// 흐름: 로그인 → 폴더 파일목록 → 새 파일만 선별 → 다운로드 → 파싱 → Supabase 저장 → 미처리분 리포트
+//   즉 주유소 폴더 안엔 잡폴더(포스자료·관리비·손익·교육…)가 많고, 마감일보는 "…일보" 폴더 밑
+//   년/월 로 깊게 중첩돼 있다. 그래서 ① 대상 5개소 폴더만 ② 그 안 "일보" 폴더만 ③ 대상 연도만
+//   골라 재귀 수집한다. 주유소는 폴더로 확정되므로 파일명 오인식 위험이 없다.
+//
+// 【자동화 범위】 소장들이 NAS에 올리는 5개소:
+//   통일로일품·남부순환로(세영TMS) · 박달·안양·광교(세일직영)  — 모두 마감일보(magam) 형식
+//   엘앤케이(용인1·김포2)는 웹앱 수동 드롭 담당 → 제외.
 //
 // 실행 (Node 20+):
 //   node --env-file=hermes/.env hermes/ingest-nas.mjs
 //
-// hermes/.env 에 채울 값 (이 파일은 git에 올라가지 않음 — .gitignore 처리됨):
-//   NAS_URL=https://seilcorp.synology.me:5001   # 비번 암호화 전송 위해 5001(HTTPS) 권장
+// hermes/.env (git 무시됨):
+//   NAS_URL=https://seilcorp.synology.me:5001   # 비번 암호화 위해 5001(HTTPS) 권장
 //   NAS_USER=아이디
 //   NAS_PASS=비번
-//   NAS_FOLDER=/일보                             # 소장들이 일보를 올리는 공유폴더 경로 (← 확인 필요)
-//   NAS_INSECURE=1                               # (선택) 시놀로지 인증서가 self-signed 라 TLS 오류 나면 설정
-//   SUPABASE_URL / SUPABASE_ANON_KEY             # (선택) 미설정 시 프론트와 동일한 기본값 사용
+//   NAS_INSECURE=1                              # (선택) 시놀로지 인증서 TLS 오류 시
+//   NAS_ROOT=/seil_share/주유소 운영 (소매)      # (선택) 미설정 시 이 기본값 사용
+//   NAS_YEARS=26                                # (선택) 처리할 연도(2자리). 미설정 시 올해만.
+//                                               #        백필하려면 예: NAS_YEARS=24,25,26
+//   SUPABASE_URL / SUPABASE_ANON_KEY            # (선택) 미설정 시 프론트와 동일한 기본값
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import * as XLSX from "xlsx";
-import { parseWorkbook } from "../src/lib/retailParser.js";
+import { STATIONS, parseMagamReport, isLnkWorkbook } from "../src/lib/retailParser.js";
 import { saveWorkbookResult } from "../src/lib/retailStore.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROCESSED_FILE = join(HERE, ".processed.json"); // {path: mtime} — 재업로드(mtime 변경) 시 재처리
 
-// 이 운영사 소속 주유소(용인1·김포2)는 웹앱 수동 드롭 담당 → NAS 자동 저장 제외
-const MANUAL_ONLY_GROUP = "엘앤케이";
+const MANUAL_ONLY_GROUP = "엘앤케이"; // 용인1·김포2 = 웹앱 수동 드롭 담당 → NAS 자동화 제외
 
-const {
-  NAS_URL,
-  NAS_USER,
-  NAS_PASS,
-  NAS_FOLDER,
-  NAS_INSECURE,
-} = process.env;
+const { NAS_URL, NAS_USER, NAS_PASS, NAS_INSECURE } = process.env;
+const NAS_ROOT = process.env.NAS_ROOT || "/seil_share/주유소 운영 (소매)";
+
+// 처리 대상 연도(2자리 문자열). 미설정 시 올해만 → 첫 실행 때 과거 수년치 백필 폭탄 방지.
+const TARGET_YEARS = new Set(
+  (process.env.NAS_YEARS || String(new Date().getFullYear()).slice(-2))
+    .split(",").map(s => s.trim()).filter(Boolean)
+);
 
 // self-signed 인증서 허용 옵션 (undici는 Node에 내장)
 let dispatcher;
@@ -55,7 +67,7 @@ async function apiInfo(apis) {
   const url = `${NAS_URL}/webapi/query.cgi?api=SYNO.API.Info&version=1&method=query&query=${apis.join(",")}`;
   const j = await (await fetch(url, fetchOpts)).json();
   if (!j.success) throw new Error("SYNO.API.Info 조회 실패");
-  return j.data; // { "SYNO.FileStation.List": { path, maxVersion }, … }
+  return j.data;
 }
 
 function call(info, api, method, params, sid) {
@@ -80,12 +92,13 @@ async function logout(info, sid) {
   await fetch(url, fetchOpts).catch(() => {});
 }
 
-async function listFiles(info, sid, folder) {
+// 폴더 1개의 바로 아래 항목(파일+폴더) 목록. mtime 포함.
+async function listFolder(info, sid, folderPath) {
   const url = call(info, "SYNO.FileStation.List", "list", {
-    folder_path: folder, additional: '["time","size"]',
+    folder_path: folderPath, additional: '["time"]',
   }, sid);
   const j = await (await fetch(url, fetchOpts)).json();
-  if (!j.success) throw new Error(`목록 조회 실패 (code ${j.error?.code}) — 폴더 경로(${folder}) 확인`);
+  if (!j.success) throw new Error(`목록 조회 실패 (code ${j.error?.code}) — 경로 확인: ${folderPath}`);
   return j.data.files || [];
 }
 
@@ -94,6 +107,37 @@ async function download(info, sid, path) {
   const res = await fetch(url, fetchOpts);
   if (!res.ok) throw new Error(`다운로드 실패 HTTP ${res.status}: ${path}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+// ── 폴더 → 주유소 매핑 / 재귀 수집 ───────────────────────────────
+const norm = (s) => String(s).replace(/\s/g, "");
+
+// 최상위 주유소 폴더명 → STATIONS(엘앤케이 제외) 중 alias 로 매칭. 0개/2개 이상이면 null.
+function matchTargetStation(folderName) {
+  const hay = norm(folderName);
+  const m = STATIONS.filter(s => s.group !== MANUAL_ONLY_GROUP && s.aliases.some(a => hay.includes(a)));
+  return m.length === 1 ? m[0] : null;
+}
+
+// "26년 일보", "26년7월" 처럼 앞이 2자리+년 인 폴더의 연도 추출. 아니면 null(연도 폴더 아님).
+function folderYear(name) {
+  const m = norm(name).match(/^(\d{2})년/);
+  return m ? m[1] : null;
+}
+
+// 폴더 하위를 재귀적으로 훑어 엑셀 파일 수집. 연도 폴더는 TARGET_YEARS 만 진입(과거 백필 차단).
+async function collectExcelFiles(info, sid, folderPath) {
+  let out = [];
+  for (const e of await listFolder(info, sid, folderPath)) {
+    if (e.isdir) {
+      const yr = folderYear(e.name);
+      if (yr && !TARGET_YEARS.has(yr)) continue; // 대상 아닌 연도 폴더 가지치기
+      out = out.concat(await collectExcelFiles(info, sid, e.path));
+    } else if (/\.(xls|xlsx|xlsm)$/i.test(e.name)) {
+      out.push(e);
+    }
+  }
+  return out;
 }
 
 // ── 처리 이력 (중복 다운로드/재처리 방지) ────────────────────────
@@ -108,62 +152,61 @@ async function saveProcessed(map) {
 
 // ── 메인 ─────────────────────────────────────────────────────────
 async function main() {
-  for (const [k, v] of Object.entries({ NAS_URL, NAS_USER, NAS_PASS, NAS_FOLDER })) {
+  for (const [k, v] of Object.entries({ NAS_URL, NAS_USER, NAS_PASS })) {
     if (!v) throw new Error(`환경변수 ${k} 가 비어있음 — hermes/.env 확인`);
   }
 
   const info = await apiInfo(["SYNO.API.Auth", "SYNO.FileStation.List", "SYNO.FileStation.Download"]);
   const sid = await login(info);
-  console.log("NAS 로그인 성공");
+  console.log(`NAS 로그인 성공 · 대상 연도: ${[...TARGET_YEARS].join(",")}년`);
 
-  const alerts = []; // 사람이 봐야 할 것 (파싱 실패 / 주유소 자동인식 실패) — 나중에 카톡·메일로 연결
+  const alerts = []; // 사람이 봐야 할 것 (파싱 실패 등) — 나중에 카톡·메일로 연결
   try {
+    // 1) 대상 5개소 폴더 탐색 → 각 폴더 안 "일보" 하위폴더 → 대상 연도 파일 수집
+    const jobs = []; // { station, file }
+    for (const top of await listFolder(info, sid, NAS_ROOT)) {
+      if (!top.isdir) continue;
+      const station = matchTargetStation(top.name);
+      if (!station) continue; // 두바이·아바타·온산 등 대상 외 주유소 & 엘앤케이 → 무시
+
+      const ilboDirs = (await listFolder(info, sid, top.path))
+        .filter(e => e.isdir && norm(e.name).includes("일보"));
+      if (!ilboDirs.length) {
+        alerts.push(`⚠️ ${station.name}: "일보" 폴더를 못 찾음 (${top.path}) — 폴더 구조 확인 필요`);
+        continue;
+      }
+      for (const d of ilboDirs) {
+        const files = await collectExcelFiles(info, sid, d.path);
+        for (const f of files) jobs.push({ station, file: f });
+      }
+      console.log(`📁 ${station.name}: 대상 파일 ${jobs.filter(j => j.station === station).length}개`);
+    }
+
+    // 2) 새 파일만 다운로드·파싱·저장
     const processed = await loadProcessed();
-    const files = (await listFiles(info, sid, NAS_FOLDER))
-      .filter(f => !f.isdir && /\.(xls|xlsx|xlsm)$/i.test(f.name));
-
-    console.log(`폴더 파일 ${files.length}개 발견`);
     let done = 0, skipped = 0;
-
-    for (const f of files) {
+    for (const { station, file: f } of jobs) {
       const mtime = f.additional?.time?.mtime ?? 0;
       if (processed[f.path] === mtime) { skipped++; continue; } // 이미 처리(변경 없음)
 
       try {
         const buf = await download(info, sid, f.path);
         const wb = XLSX.read(buf, { type: "buffer", cellDates: false });
-        const result = parseWorkbook(wb, f.name);
 
-        // 엘앤케이(용인1·김포2) 월간 통합파일 = 사람이 웹앱에 직접 드롭 담당 → 자동 저장 금지.
-        // (자동으로 넣으면 웹앱 수동 업로드와 충돌·중복) 다음 실행부턴 다운로드 없이 건너뛰도록 기록.
-        if (result.type === "lnk") {
-          console.log(`⏭️  ${f.name} → 엘앤케이(수동 담당) 파일 건너뜀`);
-          processed[f.path] = mtime;
-          skipped++;
-          continue;
+        // 방어적: 일보 폴더에 엘앤케이 통합파일이 있을 리 없지만, 있으면 저장 안 함
+        if (isLnkWorkbook(wb)) {
+          console.log(`⏭️  ${f.name} → 엘앤케이 형식 건너뜀`);
+          processed[f.path] = mtime; skipped++; continue;
         }
 
-        if (result.type === "manual") {
-          // 주유소 자동인식 실패 → 저장하지 않고 사람에게 넘김 (무인 자동화라 임의 배정 금지)
-          alerts.push(`⚠️ 주유소 자동인식 실패: ${f.name} (${result.parsed.dateStr}) — 웹앱에서 수동 지정 필요`);
-          continue; // processed 에 기록하지 않음 → 다음 실행 때 재시도
-        }
-
-        // 여기부터 magam = 자동화 대상 5개소(통일로일품·남부순환로·박달·안양·광교) 중 하나.
-        // 방어적 이중차단: 정상 경로론 엘앤케이가 magam으로 오지 않지만 혹시 몰라 그룹으로도 걸러냄.
-        if (result.station.group === MANUAL_ONLY_GROUP) {
-          console.log(`⏭️  ${f.name} → ${result.station.name}(수동 담당) 건너뜀`);
-          processed[f.path] = mtime;
-          skipped++;
-          continue;
-        }
-
-        const dates = await saveWorkbookResult(result);
-        console.log(`✅ ${f.name} → ${result.station.name} ${dates[0]}`);
-        processed[f.path] = mtime;
-        done++;
+        // 주유소는 폴더로 이미 확정 → 파일명 자동인식에 의존하지 않고 폴더 기준으로 저장
+        const parsed = parseMagamReport(wb);
+        await saveWorkbookResult({ type: "magam", station, parsed });
+        console.log(`✅ ${station.name} ${parsed.dateStr} ← ${f.name}`);
+        processed[f.path] = mtime; done++;
       } catch (err) {
-        alerts.push(`❌ 처리 실패: ${f.name} — ${err.message}`);
+        // 마감일보 형식이 아닌 파일(잡파일)이 섞였거나 파싱 실패 → 사람 확인
+        alerts.push(`❌ ${station.name} / ${f.name} — ${err.message}`);
       }
     }
 
