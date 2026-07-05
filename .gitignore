@@ -31,4 +31,6 @@ out.txt
 
 # Hermes NAS ingestion
 hermes/.processed.json
+hermes/ingest.log
+hermes/schedule.conf
 !hermes/.env.example
