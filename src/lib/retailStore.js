@@ -43,6 +43,19 @@ export async function supaGetAll() {
   } catch { return { error: "network_error", data: [] }; }
 }
 
+// 특정 날짜에 데이터가 들어와 있는 주유소명 목록 (일보 도착 여부 판정용)
+export async function supaStationsOnDate(dateStr) {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/daily_station_report?date=eq.${dateStr}&select=station_name`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+    );
+    if (!res.ok) return [];
+    const rows = await res.json();
+    return [...new Set(rows.map(r => r.station_name))];
+  } catch { return []; }
+}
+
 // 특정 주유소의 날짜 구간 행 일괄 삭제 (엘앤케이 월간 파일 재업로드 시 이전 잔재·빈 행 정리용)
 export async function supaDeleteRange(stationName, startDate, endDate) {
   await fetch(
