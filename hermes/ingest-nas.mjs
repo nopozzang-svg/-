@@ -25,6 +25,8 @@
 //        node --env-file=hermes/.env hermes/ingest-nas.mjs --seed
 //   ② 이후 일반 실행 — 시드 이후 새로 올라오거나 수정된 파일만 가져와 저장:
 //        node --env-file=hermes/.env hermes/ingest-nas.mjs
+//   (검증) --test : 주유소별 최신 파일 1개만 받아 파싱값 출력(저장 안 함). 대시보드와 대조용.
+//        node --env-file=hermes/.env hermes/ingest-nas.mjs --test
 //
 // hermes/.env (git 무시됨):
 //   NAS_URL=https://seilcorp.synology.me:5001   # 비번 암호화 위해 5001(HTTPS) 권장
@@ -53,6 +55,8 @@ const NAS_ROOT = process.env.NAS_ROOT || "/seil_share/주유소 운영 (소매)"
 
 // 시드 모드: 현재 파일을 다운로드·저장 없이 '이미 처리됨'으로만 기록 (최초 1회, 기존분 재수집 방지)
 const SEED = process.argv.includes("--seed") || process.env.NAS_SEED === "1";
+// 테스트 모드: 주유소별 최신 파일 1개만 받아 파싱값 출력 (저장·기록 안 함, 검증용 읽기전용)
+const TEST = process.argv.includes("--test");
 
 // 처리 대상 연도(2자리 문자열). 미설정 시 올해만 → 첫 실행 때 과거 수년치 백필 폭탄 방지.
 const TARGET_YEARS = new Set(
@@ -184,6 +188,31 @@ async function main() {
         for (const f of files) jobs.push({ station, file: f });
       }
       console.log(`📁 ${station.name}: 대상 파일 ${jobs.filter(j => j.station === station).length}개`);
+    }
+
+    // 테스트 모드: 주유소별 최신 파일 1개만 받아 파싱값 출력. 저장·이력기록 안 함(읽기전용 검증).
+    if (TEST) {
+      const latest = new Map(); // station.name → { file, t }
+      for (const { station, file: f } of jobs) {
+        const t = f.additional?.time?.mtime ?? 0;
+        const cur = latest.get(station.name);
+        if (!cur || t > cur.t) latest.set(station.name, { station, file: f, t });
+      }
+      console.log("\n[테스트] 주유소별 최신 파일 1개 파싱 (저장 안 함):");
+      for (const { station, file: f } of latest.values()) {
+        try {
+          const buf = await download(info, sid, f.path);
+          const wb = XLSX.read(buf, { type: "buffer", cellDates: false });
+          const p = parseMagamReport(wb);
+          const won = (n) => Math.round(n).toLocaleString("ko-KR");
+          console.log(`🔎 ${station.name} ← ${f.name}`);
+          console.log(`     날짜 ${p.dateStr} · 무연 ${won(p.gas_amt)}원 · 경유 ${won(p.diesel_amt)}원 · 세차 ${won(p.carwash_amt)}원 · 무연재고 ${won(p.gas_inv)}L`);
+        } catch (err) {
+          console.log(`❌ ${station.name} / ${f.name} — ${err.message}`);
+        }
+      }
+      console.log("\n위 값이 대시보드의 해당 날짜와 일치하면 파싱 정상입니다.");
+      return; // logout 은 finally 에서
     }
 
     const processed = await loadProcessed();
