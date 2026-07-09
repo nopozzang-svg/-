@@ -24,7 +24,7 @@
 | `hermes/ingest-nas.mjs` | 수집·파싱·저장·아침체크·텔레그램 (본체) |
 | `hermes/schedule.conf` | **스케줄 시각(사람/에이전트가 고치는 유일한 설정)**. git 미포함, 없으면 `.example`에서 생성 |
 | `hermes/install-schedule.sh` | schedule.conf 를 읽어 launchd 에 등록/갱신 |
-| `hermes/.env` | NAS 계정·텔레그램 토큰(비밀). git 미포함 |
+| `hermes/.env` | NAS 계정·텔레그램 토큰(비밀). git 미포함. `NAS_URL` 실패 시 회사 내부망 기본값 `http://172.30.1.29:5000`으로 자동 재시도 |
 | `hermes/ingest.log` | 실행 로그 |
 | `../src/lib/retailParser.js`, `retailStore.js` | 웹앱과 공유하는 파싱/저장 로직 |
 

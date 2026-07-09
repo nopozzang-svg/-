@@ -42,6 +42,7 @@
 //   NAS_YEARS=26                                # (선택) 처리할 연도(2자리). 미설정 시 올해만.
 //                                               #        백필하려면 예: NAS_YEARS=24,25,26
 //   SUPABASE_URL / SUPABASE_ANON_KEY            # (선택) 미설정 시 프론트와 동일한 기본값
+//   NAS_FALLBACK_URL=http://172.30.1.29:5000    # (선택) NAS_URL 실패 시 재시도 주소. 미설정 시 이 내부망 주소 사용
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -49,14 +50,17 @@ import { dirname, join } from "node:path";
 import * as XLSX from "xlsx";
 import { STATIONS, parseMagamReport, isLnkWorkbook } from "../src/lib/retailParser.js";
 import { saveWorkbookResult, supaStationsOnDate, supaGetAll } from "../src/lib/retailStore.js";
+import { nasUrlCandidates } from "./nas-url.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROCESSED_FILE = join(HERE, ".processed.json"); // {path: mtime} — 재업로드(mtime 변경) 시 재처리
 
 const MANUAL_ONLY_GROUP = "엘앤케이"; // 용인1·김포2 = 웹앱 수동 드롭 담당 → NAS 자동화 제외
 
-const { NAS_URL, NAS_USER, NAS_PASS, NAS_INSECURE } = process.env;
+const { NAS_USER, NAS_PASS, NAS_INSECURE } = process.env;
+const NAS_URLS = nasUrlCandidates(process.env);
 const NAS_ROOT = process.env.NAS_ROOT || "/seil_share/주유소 운영 (소매)";
+let activeNasUrl = NAS_URLS[0];
 
 // 시드 모드: 현재 파일을 다운로드·저장 없이 '이미 처리됨'으로만 기록 (최초 1회, 기존분 재수집 방지)
 const SEED = process.argv.includes("--seed") || process.env.NAS_SEED === "1";
@@ -89,7 +93,7 @@ const fetchOpts = {};
 // ── 시놀로지 FileStation API 클라이언트 ──────────────────────────
 // 엔드포인트 경로/버전은 SYNO.API.Info 로 동적 조회 (DSM 버전 간 차이 흡수)
 async function apiInfo(apis) {
-  const url = `${NAS_URL}/webapi/query.cgi?api=SYNO.API.Info&version=1&method=query&query=${apis.join(",")}`;
+  const url = `${activeNasUrl}/webapi/query.cgi?api=SYNO.API.Info&version=1&method=query&query=${apis.join(",")}`;
   const j = await (await fetch(url, fetchOpts)).json();
   if (!j.success) throw new Error("SYNO.API.Info 조회 실패");
   return j.data;
@@ -100,7 +104,7 @@ function call(info, api, method, params, sid) {
   if (!meta) throw new Error(`${api} 미지원 (NAS에서 FileStation 패키지 확인 필요)`);
   const qs = new URLSearchParams({ api, version: String(meta.maxVersion), method, ...params });
   if (sid) qs.set("_sid", sid);
-  return `${NAS_URL}/webapi/${meta.path}?${qs.toString()}`;
+  return `${activeNasUrl}/webapi/${meta.path}?${qs.toString()}`;
 }
 
 async function login(info) {
@@ -322,14 +326,10 @@ async function runMorning(info, sid, alerts, existingIndex) {
 }
 
 // ── 메인 ─────────────────────────────────────────────────────────
-async function main() {
-  for (const [k, v] of Object.entries({ NAS_URL, NAS_USER, NAS_PASS })) {
-    if (!v) throw new Error(`환경변수 ${k} 가 비어있음 — hermes/.env 확인`);
-  }
-
+async function runImportForActiveUrl() {
   const info = await apiInfo(["SYNO.API.Auth", "SYNO.FileStation.List", "SYNO.FileStation.Download"]);
   const sid = await login(info);
-  console.log(`NAS 로그인 성공 · 대상 연도: ${[...TARGET_YEARS].join(",")}년`);
+  console.log(`NAS 로그인 성공 (${activeNasUrl}) · 대상 연도: ${[...TARGET_YEARS].join(",")}년`);
 
   const alerts = []; // 사람이 봐야 할 것 (파싱 실패 등)
   try {
@@ -388,7 +388,6 @@ async function main() {
     // 일반 실행: 새/수정된 파일만 다운로드·파싱·저장
     const { done, skipped } = await importJobs(info, sid, jobs, processed, alerts, existingIndex);
 
-
     await saveProcessed(processed);
     console.log(`\n완료: 저장 ${done} · 건너뜀 ${skipped} · 알림 ${alerts.length}`);
     if (alerts.length) {
@@ -398,6 +397,27 @@ async function main() {
   } finally {
     await logout(info, sid);
   }
+}
+
+async function main() {
+  for (const [k, v] of Object.entries({ NAS_URL: NAS_URLS[0], NAS_USER, NAS_PASS })) {
+    if (!v) throw new Error(`환경변수 ${k} 가 비어있음 — hermes/.env 확인`);
+  }
+
+  let lastError;
+  for (let i = 0; i < NAS_URLS.length; i++) {
+    activeNasUrl = NAS_URLS[i];
+    if (NAS_URLS.length > 1) console.log(`[NAS] 접속 시도 ${i + 1}/${NAS_URLS.length}: ${activeNasUrl}`);
+    try {
+      await runImportForActiveUrl();
+      return;
+    } catch (err) {
+      lastError = err;
+      console.log(`[NAS] 접속 실패: ${activeNasUrl} — ${err.message}`);
+    }
+  }
+
+  throw lastError || new Error("시도할 NAS_URL 이 없습니다");
 }
 
 main().catch(err => { console.error("치명적 오류:", err.message); process.exit(1); });
